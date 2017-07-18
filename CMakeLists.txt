@@ -10,7 +10,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wall")
 
 set(SOURCES
-	src/terastream.c)
+	src/terastream.c
+  src/adiag_functions.c)
 
 if(CMAKE_BUILD_TYPE MATCHES "test")
   add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
