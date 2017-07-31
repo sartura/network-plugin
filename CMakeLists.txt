@@ -1,7 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
-
+set(PLUGIN 0 CACHE BOOL "Build a plugin.")
 
 PROJECT(sysrepo-plugin-dt-terastream)
 
@@ -33,4 +33,8 @@ find_package(UCI REQUIRED)
 include_directories(${UCI_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${UCI_LIBRARIES})
 
-install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION ${PLUGINS_DIR})
+if (PLUGIN)
+	install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION ${SR_PLUGINS_DIR})
+else()
+	install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION bin)
+endif()
