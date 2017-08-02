@@ -1,6 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
-set(PLUGINS_DIR "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/sysrepo/plugins/" CACHE PATH "Sysrepo plugins directory.")
 set(PLUGIN 0 CACHE BOOL "Build a plugin.")
 
 PROJECT(sysrepo-plugin-dt-terastream)
@@ -13,14 +12,12 @@ set(SOURCES
 	src/terastream.c
   src/adiag_functions.c)
 
-if(CMAKE_BUILD_TYPE MATCHES "test")
-  add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
-  install(TARGETS ${CMAKE_PROJECT_NAME}
-	  DESTINATION lib/sysrepo/plugins)
+if(PLUGIN)
+	add_library(${CMAKE_PROJECT_NAME} MODULE ${SOURCES})
+	install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION lib)
 else()
-  add_library(${CMAKE_PROJECT_NAME} MODULE ${SOURCES})
-  install(TARGETS ${CMAKE_PROJECT_NAME} LIBRARY
-	  DESTINATION lib/sysrepo/plugins)
+	add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
+	install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION bin)
 endif()
 
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${CMAKE_PROJECT_NAME} PREFIX "")
@@ -32,9 +29,3 @@ include_directories(${SYSREPO_INCLUDE_DIRS})
 find_package(UCI REQUIRED)
 include_directories(${UCI_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${UCI_LIBRARIES})
-
-if (PLUGIN)
-	install(TARGETS ${CMAKE_PROJECT_NAME} DESTINATION ${SR_PLUGINS_DIR})
-else()
-	install(TARGETS ${CMAKE_PROJECT_NAME} RUNTIME DESTINATION bin)
-endif()
