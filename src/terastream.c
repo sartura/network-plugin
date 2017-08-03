@@ -5,6 +5,8 @@
 #include "adiag_functions.h"
 #include "common.h"
 
+const char *YANG_MODEL = "ietf-interfaces";
+
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
     char *xpath;
@@ -173,7 +175,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 
     rc = config_store_to_uci(pctx, session);
 
-    return SR_ERR_OK;
+    return rc;
 }
 
 static int
@@ -287,14 +289,14 @@ main() {
 
 	/* connect to sysrepo */
 	rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &connection);
-	CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
+	SR_CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
 
 	/* start session */
 	rc = sr_session_start(connection, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-	CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
+	SR_CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
 
 	rc = sr_plugin_init_cb(session, &private_ctx);
-	CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
+	SR_CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
 
 	/* loop until ctrl-c is pressed / SIGINT is received */
 	signal(SIGINT, sigint_handler);
