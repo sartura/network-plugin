@@ -28,7 +28,7 @@ static adiag_node_func_m table_operational[] = {
 };
 
 
-static const struct rpc_method table_rpc[] = {
+static const struct rpc_method table_prov[] = {
     { "cpe-update", prov_cpe_update },
     { "cpe-reboot", prov_cpe_reboot },
     { "cpe-factory-reset", prov_factory_reset },
@@ -124,6 +124,8 @@ config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *u
     rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
     SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
+    INF("Set %s to %s", xpath, uci_val);
+
  exit:
     if (uci_val) {
         free(uci_val);
@@ -150,6 +152,7 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
     }
 
+
   exit:
     return rc;
 }
@@ -174,17 +177,11 @@ config_uci_to_store(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
     }
 
+    rc = sr_commit(sess);
+
   exit:
     return rc;
 }
-
-/* Device diagnostics part. */
-/* SIP diagnostics - will need device for that ... */
-/* libnl stuff ... */
-/* prefix: diag_ */
-
-/* Advanced diagnostics. */
-/* prefix: adiag_ */
 
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
@@ -192,6 +189,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     int rc = SR_ERR_OK;
     struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
 
+    INF("module changed %s", module_name);
     rc = config_store_to_uci(pctx, session);
 
     return rc;
@@ -228,7 +226,26 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         }
     }
 
-    return SR_ERR_OK;
+    return rc;
+}
+
+static int
+init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription)
+{
+    char path[MAX_XPATH];
+    const int n_mappings = ARR_SIZE(table_prov);
+    int rc = SR_ERR_OK;
+
+    for (unsigned long i = 0; i < n_mappings; i++) {
+        snprintf(path, MAX_XPATH, "/provisioning:%s", table_prov[i].name);
+        rc = sr_rpc_subscribe(session, path, table_prov[i].method, NULL,
+                              SR_SUBSCR_CTX_REUSE, &subscription);
+        SR_CHECK_RET(rc, exit, "initialization of rpc handler: %s failed with: %s",
+                     table_prov[i].name, sr_strerror(rc));
+    }
+
+  exit:
+    return rc;
 }
 
 int
@@ -248,19 +265,31 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
         goto error;
     }
 
-    /* operational data */
+    /* Operational data handling. */
     rc = sr_dp_get_items_subscribe(session, "/ietf-interfaces:interfaces-state", data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
-    if (SR_ERR_OK != rc) {
-        fprintf(stderr, "Error by sr_dp_get_items_subscribe: %s\n", sr_strerror(rc));
-        goto error;
-    }
+    SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
+
+    /* RPC handlers. */
+    rc = init_provisioning_cb(session, subscription);
+    SR_CHECK_RET(rc, error, "init_rpc_cb %s", sr_strerror(rc));
 
     *private_ctx = ctx;
-
+    
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
+
+    /* Init type for interface... */
+    rc = sr_set_item_str(session,
+                         "/ietf-interfaces:interfaces/interface[name='wan']/type",
+                         "iana-if-type:ethernetCsmacd",
+                         SR_EDIT_DEFAULT);
+    INF("Just set type of wan: %s", sr_strerror(rc));
+    SR_CHECK_RET(rc, error, "sr_set_item type %s", sr_strerror(rc));
+    rc = sr_commit(session);
+  INF("And commited %s", sr_strerror(rc));
+
 
     rc = config_uci_to_store(ctx, session);
     SR_CHECK_RET(rc, error, "initial uci to store error: %s", sr_strerror(rc));

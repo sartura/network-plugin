@@ -6,6 +6,8 @@
 #include "uci.h"
 
 #define MAX_UCI_PATH 64
+#define MAX_XPATH 64
+
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
 
 
