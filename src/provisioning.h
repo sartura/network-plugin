@@ -1,15 +1,21 @@
 #include <stdio.h>
+#include "common.h"
 
-typedef enum {
-  PROV_OK,
-  PROV_FAIL,
-} PROV_SC;
+int
+prov_cpe_reboot(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                sr_val_t **output, size_t *output_cnt, void *private_ctx);
 
-void
-prov_reboot_cpe();
+int
+prov_cpe_update(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                sr_val_t **output, size_t *output_cnt, void *private_ctx);
 
-PROV_SC
-prov_factory_reset();
+int
+prov_factory_reset(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                   sr_val_t **output, size_t *output_cnt, void *private_ctx);
 
-PROV_SC
-prov_firmware_upgrade();
+struct rpc_method {
+  char *name;
+  int (*method)(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                sr_val_t **output, size_t *output_cnt, void *private_ctx);
+};
+

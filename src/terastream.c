@@ -3,27 +3,36 @@
 
 #include "terastream.h"
 #include "adiag_functions.h"
+#include "provisioning.h"
 #include "common.h"
 
 const char *YANG_MODEL = "ietf-interfaces";
 
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
-    char *xpath;
     char *ucipath;
+    char *xpath;
 } sr_uci_link;
 
-sr_uci_link table_sr_uci[] =
+static sr_uci_link table_sr_uci[] =
 {
     { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/mtu" },
-    { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" },
+    /* { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" }, */
 };
 
-adiag_node_func_m table_adiag_node_func_mapping[] = {
-    { "cpu_usage", adiag_cpu_usage },
-    { "memory_status", adiag_free_memory },
+/* Mappings of operational nodes to corresponding handler functions. */
+/* Functions must not need the plugin context. */
+static adiag_node_func_m table_operational[] = {
+    { "cpu-usage", adiag_cpu_usage },
+    { "memory-status", adiag_free_memory },
 };
 
+
+static const struct rpc_method table_rpc[] = {
+    { "cpe-update", prov_cpe_update },
+    { "cpe-reboot", prov_cpe_reboot },
+    { "cpe-factory-reset", prov_factory_reset },
+};
 
 /* Update UCI configuration from Sysrepo datastore. */
 static int config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess);
@@ -41,12 +50,16 @@ static int
 get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
 {
     int rc = UCI_OK;
+    char path[MAX_UCI_PATH];
     struct uci_ptr ptr;
 
-    rc = uci_lookup_ptr(uctx, &ptr, ucipath, true);
-    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, ucipath);
+    sprintf(path, "%s", ucipath);
+    INF("%s %s", path, *value);
 
-    *value = strdup(ptr.o->v.string);
+    rc = uci_lookup_ptr(uctx, &ptr, path, true);
+    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
+
+    strcpy(*value, ptr.o->v.string);
 
   exit:
     return rc;
@@ -102,7 +115,7 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *x
 static int
 config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *ucipath, char *xpath)
 {
-    char *uci_val = NULL;
+    char *uci_val = calloc(1, 100);
     int rc = SR_ERR_OK;
 
     rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
@@ -112,6 +125,10 @@ config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *u
     SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
  exit:
+    if (uci_val) {
+        free(uci_val);
+    }
+
     return rc;
 }
 
@@ -147,8 +164,10 @@ config_uci_to_store(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
 
     /* Read UCI configuration. */
     for (int i = 0; i < n_mappings; i++) {
+
         xpath = table_sr_uci[i].xpath;
         ucipath = table_sr_uci[i].ucipath;
+        fprintf(stderr, "xpath,ucipath : %s, %s\n", xpath, ucipath);
 
         rc = config_ucipath_to_xpath(pctx, sess, ucipath, xpath);
         UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
@@ -193,8 +212,8 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     /* advanced diagnostics */
     for (int i = 0; i < n_mappings; i++) {
-        node = table_adiag_node_func_mapping[i].node;
-        func = table_adiag_node_func_mapping[i].op_func;
+        node = table_operational[i].node;
+        func = table_operational[i].op_func;
 
         if (sr_xpath_node_name_eq(cb_xpath, node)) {
             *values_cnt = 1;
@@ -218,7 +237,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
 
-    /* INF("sr_plugin_init_cb for sysrepo-plugin-dt-network"); */
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
 
     struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
 
@@ -243,7 +262,11 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
+    rc = config_uci_to_store(ctx, session);
+    SR_CHECK_RET(rc, error, "initial uci to store error: %s", sr_strerror(rc));
+
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
 
     return SR_ERR_OK;
 

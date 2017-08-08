@@ -2,32 +2,39 @@
 
 #include "provisioning.h"
 
-void
-prov_reboot_cpe()
+int
+prov_cpe_reboot(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
-  execl("/sbin/reboot", "reboot", (char *) NULL);
+    execl("/sbin/reboot", "reboot", (char *) NULL);
+
+    return 0;
 }
 
-PROV_SC
-prov_factory_reset()
+int
+prov_cpe_update(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
-  /* Check if firmware was installed from SquashFS image? */
+    /* TODO */
+    /* Download image. */
 
-  /* Run firstboot. */
-  execl("/sbin/firstboot", "firstboot", (char *) NULL);
+    /* Check integrity. */
 
-  /* Reboot the computer. */
-  prov_reboot_cpe();
+    /* Execute system upgrade. */
+    return -1;
 }
 
-PROV_SC
-prov_firmware_upgrade(char *image_url, char *image_md5)
+int
+prov_factory_reset(const char *xpath, const sr_val_t *input, const size_t input_cnt,
+                   sr_val_t **output, size_t *output_cnt, void *private_ctx)
 {
-  /* Download image. */
+    /* Check if firmware was installed from SquashFS image? */
 
-  /* Check integrity. */
-  
-  /* Execute system upgrade. */
+    /* Run firstboot. */
+    execl("/sbin/firstboot", "firstboot", (char *) NULL);
 
-  return PROV_OK;
+    /* Reboot the computer. */
+    execl("/sbin/reboot", "reboot", (char *) NULL);
+
+    return 0;
 }

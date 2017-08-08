@@ -10,7 +10,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wall")
 
 set(SOURCES
 	src/terastream.c
-  src/adiag_functions.c)
+  src/adiag_functions.c
+  src/provisioning.c)
 
 if(PLUGIN)
 	add_library(${CMAKE_PROJECT_NAME} MODULE ${SOURCES})
