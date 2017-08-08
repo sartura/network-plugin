@@ -1,0 +1,62 @@
+module provisioning {
+
+    namespace "urn:terastream:provisioning";
+
+    prefix "terastream-sip";
+
+    organization
+        "Deutsche Telekom AG";
+
+    contact
+        "Hmm";
+
+    description
+        "This module defines HGW provisioning used in the TeraStream home gateway project.";
+
+    revision "2017-08-08" {
+        description
+            "Version 0.1.0 -- Initial version.";
+    }
+
+
+    container "firmware" {
+
+       leaf "path" {
+           type "string";
+       }
+    }
+
+   container "hgw-diagnostics" {
+      config false;
+
+      description
+        "Device diagnostics.";
+
+       leaf "version" {
+           type "string";
+       }
+
+       leaf "memory-status" {
+            type "string";
+       }
+
+       leaf "cpu-usage" {
+            type "string";
+       }
+    }
+
+    rpc cpe-update {
+        description
+            "CPE firmware update (with keeping existing configuration)";
+    }
+
+    rpc cpe-reboot {
+        description
+            "Reset the device.";
+    }
+
+    rpc cpe-factory-reset {
+        description
+            "Flash firmware to factory version.";
+    }
+}
