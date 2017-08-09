@@ -37,11 +37,11 @@ module provisioning {
        }
 
        leaf "memory-status" {
-            type "string";
+            type "uint32";
        }
 
        leaf "cpu-usage" {
-            type "string";
+            type "uint32";
        }
     }
 

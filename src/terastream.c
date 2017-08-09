@@ -14,6 +14,7 @@ typedef struct sr_uci_mapping {
     char *xpath;
 } sr_uci_link;
 
+/* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
     { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/mtu" },
@@ -23,11 +24,12 @@ static sr_uci_link table_sr_uci[] =
 /* Mappings of operational nodes to corresponding handler functions. */
 /* Functions must not need the plugin context. */
 static adiag_node_func_m table_operational[] = {
-    { "cpu-usage", adiag_cpu_usage },
+    { "version", adiag_version },
     { "memory-status", adiag_free_memory },
+    { "cpu-usage", adiag_cpu_usage },
 };
 
-
+/* Mappings of operational data nodes for provisioning functions to functions. */
 static const struct rpc_method table_prov[] = {
     { "cpe-update", prov_cpe_update },
     { "cpe-reboot", prov_cpe_reboot },
@@ -200,44 +202,51 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 {
     char *node;
     adiag_func func;
-    sr_val_t *val;
     struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
     (void) pctx;
-    const int n_mappings = ARR_SIZE(table_sr_uci);
+    const int n_mappings = ARR_SIZE(table_operational);
     int rc = SR_ERR_OK;
 
-    /* diagnostics */
+    INF("==Called path %s %s [n_map %d]", cb_xpath, sr_xpath_node_name(cb_xpath), n_mappings);
 
-    /* advanced diagnostics */
-    for (int i = 0; i < n_mappings; i++) {
-        node = table_operational[i].node;
-        func = table_operational[i].op_func;
+    if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
+        INF("Diagnostics for %s %d", cb_xpath, n_mappings);
 
-        if (sr_xpath_node_name_eq(cb_xpath, node)) {
-            *values_cnt = 1;
-            rc = sr_new_values(*values_cnt, &val);
-            if (SR_ERR_OK != rc) {
-                return rc;
-            }
+        *values_cnt = n_mappings;
+        rc = sr_new_values(*values_cnt, values);
+        SR_CHECK_RET(rc, exit, "Couldn't create %ul values because of %d", *values_cnt, rc);
 
-            rc = func(val);
+        for (size_t i = 0; i < *values_cnt; i++) {
+            node = table_operational[i].node;
+            func = table_operational[i].op_func;
+            INF("\tDiagnostics for: %s", node);
 
-            *values = val;
+            rc = func(&(*values)[i]);
+            /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
         }
+
     }
 
+    for (size_t i = 0; i < *values_cnt; i++){
+        sr_print_val(&(*values)[i]);
+    }
+
+    INF("Error %d", rc);
+   exit:
     return rc;
 }
 
 static int
-init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription)
+init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription, void **private_ctx)
 {
     char path[MAX_XPATH];
     const int n_mappings = ARR_SIZE(table_prov);
     int rc = SR_ERR_OK;
+    INF_MSG("Provisioning callbacks rpcs...");
 
-    for (unsigned long i = 0; i < n_mappings; i++) {
+    for (int i = 0; i < n_mappings; i++) {
         snprintf(path, MAX_XPATH, "/provisioning:%s", table_prov[i].name);
+        INF("Subscribing rpc %s", path);
         rc = sr_rpc_subscribe(session, path, table_prov[i].method, NULL,
                               SR_SUBSCR_CTX_REUSE, &subscription);
         SR_CHECK_RET(rc, exit, "initialization of rpc handler: %s failed with: %s",
@@ -266,16 +275,16 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     }
 
     /* Operational data handling. */
-    rc = sr_dp_get_items_subscribe(session, "/ietf-interfaces:interfaces-state", data_provider_cb, *private_ctx,
+    rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     /* RPC handlers. */
-    rc = init_provisioning_cb(session, subscription);
+    rc = init_provisioning_cb(session, subscription, private_ctx);
     SR_CHECK_RET(rc, error, "init_rpc_cb %s", sr_strerror(rc));
 
     *private_ctx = ctx;
-    
+
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));

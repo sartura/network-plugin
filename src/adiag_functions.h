@@ -15,6 +15,7 @@ typedef struct adiag_node_func_mapping {
 } adiag_node_func_m;
 
 /* Operation functions Declaration */
+DIAG_RC adiag_version(sr_val_t *);
 DIAG_RC adiag_cpu_usage(sr_val_t *);
 DIAG_RC adiag_free_memory(sr_val_t *);
 
