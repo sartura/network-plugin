@@ -17,9 +17,12 @@ typedef struct sr_uci_mapping {
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
-    { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/mtu" },
+    { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv4/mtu" },
+    { "network.wan6.mtu", "/ietf-interfaces:interfaces/interface[name='wan6']/ietf-ip:ipv6/mtu" },
     /* { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" }, */
 };
+
+static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
 
 /* Mappings of operational nodes to corresponding handler functions. */
 /* Functions must not need the plugin context. */
@@ -102,13 +105,15 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *x
     int rc = SR_ERR_OK;
 
     rc = sr_get_item(sess, xpath, &val);
-    SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    /* SR_CHECK_RET(rc, exit, "sr_get_item %s for xpath %s", sr_strerror(rc), xpath); */
 
-    val_str = sr_val_to_str(val);
-    SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    if (SR_ERR_OK == rc) {
+        val_str = sr_val_to_str(val);
+        SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
-    rc = set_uci_item(pctx->uctx, ucipath, val_str);
-    UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+        rc = set_uci_item(pctx->uctx, ucipath, val_str);
+        UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    }
 
   exit:
     return rc;
@@ -121,12 +126,15 @@ config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *u
     int rc = SR_ERR_OK;
 
     rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
-    UCI_CHECK_RET(rc, exit, "get_uci_item %s", sr_strerror(rc));
-
-    rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
-    SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    /* UCI_CHECK_RET(rc, exit, "get_uci_item %s", sr_strerror(rc)); */
+    if (UCI_OK == rc) {
+        rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
+        SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    }
 
     INF("Set %s to %s", xpath, uci_val);
+
+    return SR_ERR_OK;
 
  exit:
     if (uci_val) {
@@ -150,10 +158,10 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         xpath = table_sr_uci[i].xpath;
         ucipath = table_sr_uci[i].ucipath;
         rc = config_xpath_to_ucipath(pctx, sess, xpath, ucipath);
-        UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
-        SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
+        INF("xpath_to_ucipath %s", sr_strerror(rc));
+        /* UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
+        /* SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
     }
-
 
   exit:
     return rc;
@@ -180,6 +188,54 @@ config_uci_to_store(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
     }
 
     rc = sr_commit(sess);
+
+  exit:
+    return rc;
+}
+
+static int
+add_interface(sr_session_ctx_t *session, char *name)
+{
+    char xpath[100];
+    int rc;
+
+    /* Init type for interface... */
+    sprintf(xpath, xpath_network_type_format, name);
+    INF("xpath: %s", xpath);
+    rc = sr_set_item_str(session,
+                         xpath,
+                         "iana-if-type:ethernetCsmacd",
+                         SR_EDIT_DEFAULT);
+
+    return rc;
+}
+
+static int
+init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
+{
+    struct uci_element *e;
+    struct uci_section *s;
+    struct uci_package *package = NULL;
+    int rc;
+
+    rc = uci_load(pctx->uctx, "network", &package);
+
+    uci_foreach_element(&package->sections, e) {
+        s = uci_to_section(e);
+        char *type = s->type;
+        char *name = s->e.name;
+
+        INF("adding interface %s %s", type, name);
+        if (strcmp("interface", type) == 0) {
+            add_interface(session, name);
+        }
+    }
+
+    rc = sr_commit(session);
+    SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
+
+    rc = config_uci_to_store(pctx, session);
+    SR_CHECK_RET(rc, exit, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
   exit:
     return rc;
@@ -214,7 +270,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
         *values_cnt = n_mappings;
         rc = sr_new_values(*values_cnt, values);
-        SR_CHECK_RET(rc, exit, "Couldn't create %ul values because of %d", *values_cnt, rc);
+        SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
 
         for (size_t i = 0; i < *values_cnt; i++) {
             node = table_operational[i].node;
@@ -227,11 +283,11 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     }
 
+    /* Debug info: */
     for (size_t i = 0; i < *values_cnt; i++){
         sr_print_val(&(*values)[i]);
     }
 
-    INF("Error %d", rc);
    exit:
     return rc;
 }
@@ -274,7 +330,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
         goto error;
     }
 
-    /* Operational data handling. */
+     /* Operational data handling. */
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
@@ -290,18 +346,21 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
     /* Init type for interface... */
-    rc = sr_set_item_str(session,
-                         "/ietf-interfaces:interfaces/interface[name='wan']/type",
-                         "iana-if-type:ethernetCsmacd",
-                         SR_EDIT_DEFAULT);
-    INF("Just set type of wan: %s", sr_strerror(rc));
-    SR_CHECK_RET(rc, error, "sr_set_item type %s", sr_strerror(rc));
-    rc = sr_commit(session);
-  INF("And commited %s", sr_strerror(rc));
+    rc = init_interfaces(ctx, session);
+    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+
+    /* rc = sr_set_item_str(session, */
+    /*                      "/ietf-interfaces:interfaces/interface[name='wan']/type", */
+    /*                      "iana-if-type:ethernetCsmacd", */
+    /*                      SR_EDIT_DEFAULT); */
+    /* INF("Just set type of wan: %s", sr_strerror(rc)); */
+    /* SR_CHECK_RET(rc, error, "sr_set_item type %s", sr_strerror(rc)); */
+  /*   rc = sr_commit(session); */
+  /* INF("And commuted %s", sr_strerror(rc)); */
 
 
-    rc = config_uci_to_store(ctx, session);
-    SR_CHECK_RET(rc, error, "initial uci to store error: %s", sr_strerror(rc));
+    /* rc = config_uci_to_store(ctx, session); */
+    /* SR_CHECK_RET(rc, error, "initial uci to store error: %s", sr_strerror(rc)); */
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");

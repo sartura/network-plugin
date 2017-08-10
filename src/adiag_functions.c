@@ -23,9 +23,6 @@ adiag_version(sr_val_t *val)
     sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/version");
     sr_val_set_str_data(val, SR_STRING_T, buff);
 
-    printf("[%ul] adiag_version %s\n", &val, val->data.string_val);
-
-
     return DIAG_OK;
 
   error:
@@ -69,7 +66,7 @@ adiag_cpu_usage(sr_val_t *val)
     fscanf(fp,"%*s %Lf %Lf %Lf %Lf",&a[0],&a[1],&a[2],&a[3]);
     fclose(fp);
 
-    sleep(2);                   /* Interval is needed to measure CPU load. */
+    sleep(1);                   /* Interval is needed to measure CPU load. */
 
     fp = fopen("/proc/stat","r");
     if (!fp) {

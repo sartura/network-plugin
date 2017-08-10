@@ -1,4 +1,5 @@
 #include "sysrepo.h"
+#include "sysrepo/values.h"
 
 /* Model */
 typedef enum {
