@@ -1,6 +1,11 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+#include <libubus.h>
+#include <libubox/blobmsg.h>
+#include <libubox/blobmsg_json.h>
+#include <json-c/json.h>
+
 #include "terastream.h"
 #include "adiag_functions.h"
 #include "provisioning.h"
@@ -37,6 +42,83 @@ static const struct rpc_method table_prov[] = {
     { "cpe-update", prov_cpe_update },
     { "cpe-reboot", prov_cpe_reboot },
     { "cpe-factory-reset", prov_factory_reset },
+};
+
+static void
+oper_status_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+{
+    char *json_string;
+    const char *status;
+    struct json_object *r, *t;
+    sr_val_t *val = (sr_val_t *) req->priv;
+
+    fprintf(stderr, "systemboard cb\n");
+    if (!msg) {
+        return;
+    }
+
+    json_string = blobmsg_format_json(msg, true);
+    r = json_tokener_parse(json_string);
+    INF("%s", json_string);
+    json_object_object_get_ex(r, "up", &t);
+
+    status = json_object_to_json_string(t);
+    INF("%s", status);
+
+    sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/version");
+    sr_val_set_str_data(val, SR_STRING_T, status);
+
+    json_object_put(r);
+    free(json_string);
+}
+
+static int
+oper_status(sr_val_t *val)
+{
+    uint32_t id = 0;
+    struct blob_buf buf = {0,};
+    int rc = SR_ERR_OK;
+    struct ubus_context *ctx = ubus_connect(NULL);
+    if (ctx == NULL) {
+        fprintf(stderr, "Cant allocate ubus\n");
+        goto exit;
+    }
+
+    blob_buf_init(&buf, 0);
+
+    rc = ubus_lookup_id(ctx, "network.interface.wan", &id);
+
+    if (rc) {
+        fprintf(stderr, "ubus [%d]: no object network.interface.wan\n", rc);
+        goto exit;
+    }
+    rc = ubus_invoke(ctx, id, "status", buf.head, oper_status_cb, (void *) val, 1000);
+    if (rc) {
+        fprintf(stderr, "ubus [%d]: no object status\n", rc);
+        goto exit;
+    }
+
+  exit:
+    blob_buf_free(&buf);
+
+    return rc;
+
+}
+
+static int
+interface_status_oper_status(sr_val_t *val)
+{
+    int rc = SR_ERR_OK;
+
+    /* Sets the value in ubus callback. */
+    oper_status(val);
+
+    return rc;
+}
+
+
+static adiag_node_func_m table_interface_status[] = {
+    { "oper-status", interface_status_oper_status },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
@@ -128,6 +210,7 @@ config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *u
     rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
     /* UCI_CHECK_RET(rc, exit, "get_uci_item %s", sr_strerror(rc)); */
     if (UCI_OK == rc) {
+        INF("xpath %s -> ucival %s", xpath, uci_val);
         rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
         SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
     }
@@ -158,12 +241,16 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         xpath = table_sr_uci[i].xpath;
         ucipath = table_sr_uci[i].ucipath;
         rc = config_xpath_to_ucipath(pctx, sess, xpath, ucipath);
-        INF("xpath_to_ucipath %s", sr_strerror(rc));
+        INF("xpath_to_ucipath [%d] %s", rc, sr_strerror(rc));
         /* UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
         /* SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
     }
 
   exit:
+    if (SR_ERR_NOT_FOUND == rc) {
+        rc = SR_ERR_OK;
+    }
+
     return rc;
 }
 
@@ -260,7 +347,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     adiag_func func;
     struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
     (void) pctx;
-    const int n_mappings = ARR_SIZE(table_operational);
+    int n_mappings = ARR_SIZE(table_operational);
     int rc = SR_ERR_OK;
 
     INF("==Called path %s %s [n_map %d]", cb_xpath, sr_xpath_node_name(cb_xpath), n_mappings);
@@ -283,6 +370,25 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     }
 
+    n_mappings = ARR_SIZE(table_interface_status);
+    if (sr_xpath_node_name_eq(cb_xpath, "interface")) {
+      INF("Diagnostics for %s %d", cb_xpath, n_mappings);
+
+      *values_cnt = n_mappings;
+      rc = sr_new_values(*values_cnt, values);
+      SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
+
+      for (size_t i = 0; i < *values_cnt; i++) {
+        node = table_interface_status[i].node;
+        func = table_interface_status[i].op_func;
+        INF("\tDiagnostics for: %s", node);
+
+        rc = func(&(*values)[i]);
+        /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
+      }
+
+    }
+
     /* Debug info: */
     for (size_t i = 0; i < *values_cnt; i++){
         sr_print_val(&(*values)[i]);
@@ -293,7 +399,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 }
 
 static int
-init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription, void **private_ctx)
+init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription)
 {
     char path[MAX_XPATH];
     const int n_mappings = ARR_SIZE(table_prov);
@@ -330,37 +436,37 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
         goto error;
     }
 
-     /* Operational data handling. */
+    *private_ctx = ctx;
+
+    /* Operational data handling. */
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    /* Operational data handling. */
+    rc = sr_dp_get_items_subscribe(session,
+                                   "/ietf-interfaces:interfaces-state",
+                                   data_provider_cb, *private_ctx,
+                                   SR_SUBSCR_DEFAULT, &subscription);
+    SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
+
     /* RPC handlers. */
-    rc = init_provisioning_cb(session, subscription, private_ctx);
+    rc = init_provisioning_cb(session, subscription);
     SR_CHECK_RET(rc, error, "init_rpc_cb %s", sr_strerror(rc));
 
-    *private_ctx = ctx;
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
 
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
+
     /* Init type for interface... */
     rc = init_interfaces(ctx, session);
     SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
-
-    /* rc = sr_set_item_str(session, */
-    /*                      "/ietf-interfaces:interfaces/interface[name='wan']/type", */
-    /*                      "iana-if-type:ethernetCsmacd", */
-    /*                      SR_EDIT_DEFAULT); */
-    /* INF("Just set type of wan: %s", sr_strerror(rc)); */
-    /* SR_CHECK_RET(rc, error, "sr_set_item type %s", sr_strerror(rc)); */
-  /*   rc = sr_commit(session); */
-  /* INF("And commuted %s", sr_strerror(rc)); */
-
-
-    /* rc = config_uci_to_store(ctx, session); */
-    /* SR_CHECK_RET(rc, error, "initial uci to store error: %s", sr_strerror(rc)); */
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
@@ -408,13 +514,16 @@ main() {
 	int rc = SR_ERR_OK;
 
 	/* connect to sysrepo */
+  INF_MSG("Connecting to sysrepo ...");
 	rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &connection);
 	SR_CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
 
 	/* start session */
+  INF_MSG("Starting session ...");
 	rc = sr_session_start(connection, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
 	SR_CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
 
+  INF_MSG("Initializing plugin ...");
 	rc = sr_plugin_init_cb(session, &private_ctx);
 	SR_CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
 

@@ -7,7 +7,7 @@
 
 const char *partition_path = "/";
 
-DIAG_RC
+int
 adiag_version(sr_val_t *val)
 {
     FILE *fp;
@@ -23,13 +23,13 @@ adiag_version(sr_val_t *val)
     sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/version");
     sr_val_set_str_data(val, SR_STRING_T, buff);
 
-    return DIAG_OK;
+    return SR_ERR_OK;
 
   error:
     return -1;
 }
 
-DIAG_RC
+int
 adiag_free_memory(sr_val_t *val)
 {
     struct statvfs vfs;
@@ -38,7 +38,7 @@ adiag_free_memory(sr_val_t *val)
     INF_MSG("1.");
     rc = statvfs(partition_path, &vfs);
     if (rc == -1) {
-      return DIAG_UNKNOWN;
+      return SR_ERR_INTERNAL;
     }
     INF_MSG("2.");
 
@@ -49,18 +49,20 @@ adiag_free_memory(sr_val_t *val)
     printf("adiag_free_memory %d\n", val->data.uint32_val);
     INF_MSG("3.");
 
-    return DIAG_OK;
+    return SR_ERR_OK;
 }
 
-DIAG_RC
+int
 adiag_cpu_usage(sr_val_t *val)
 {
     long double a[4], b[4];
     long double cpu_usage;
     FILE *fp;
+    int rc = SR_ERR_OK;
 
     fp = fopen("/proc/stat","r");
     if (!fp) {
+        rc = SR_ERR_IO;
         goto error;
     }
     fscanf(fp,"%*s %Lf %Lf %Lf %Lf",&a[0],&a[1],&a[2],&a[3]);
@@ -70,6 +72,7 @@ adiag_cpu_usage(sr_val_t *val)
 
     fp = fopen("/proc/stat","r");
     if (!fp) {
+        rc = SR_ERR_IO;
         goto error;
     }
     fscanf(fp,"%*s %Lf %Lf %Lf %Lf",&b[0],&b[1],&b[2],&b[3]);
@@ -77,14 +80,14 @@ adiag_cpu_usage(sr_val_t *val)
 
     cpu_usage = ((b[0]+b[1]+b[2]) - (a[0]+a[1]+a[2])) / ((b[0]+b[1]+b[2]+b[3]) - (a[0]+a[1]+a[2]+a[3]));
 
-    sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/cpu-usage");
+    rc = sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/cpu-usage");
     val->type = SR_UINT32_T;
     val->data.uint32_val = (uint32_t) (cpu_usage * 100.0);
 
     printf("calculated cpu-usage %d %Lf\n", val->data.uint32_val, cpu_usage);
 
-    return DIAG_OK;
+    return SR_ERR_OK;
 
   error:
-    return DIAG_FD_ERR;
+    return rc;
 }
