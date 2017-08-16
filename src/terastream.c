@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <inttypes.h>
+#include <unistd.h>
 
 #include <libubus.h>
 #include <libubox/blobmsg.h>
@@ -15,16 +16,16 @@ const char *YANG_MODEL = "ietf-interfaces";
 
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
-    char *ucipath;
-    char *xpath;
+  char *ucipath;
+  char *xpath;
 } sr_uci_link;
 
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
-    { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv4/mtu" },
-    { "network.wan6.mtu", "/ietf-interfaces:interfaces/interface[name='wan6']/ietf-ip:ipv6/mtu" },
-    /* { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" }, */
+  { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv4/mtu" },
+  { "network.wan6.mtu", "/ietf-interfaces:interfaces/interface[name='wan6']/ietf-ip:ipv6/mtu" },
+  /* { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" }, */
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
@@ -32,93 +33,125 @@ static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/inte
 /* Mappings of operational nodes to corresponding handler functions. */
 /* Functions must not need the plugin context. */
 static adiag_node_func_m table_operational[] = {
-    { "version", adiag_version },
-    { "memory-status", adiag_free_memory },
-    { "cpu-usage", adiag_cpu_usage },
+  { "version", adiag_version },
+  { "memory-status", adiag_free_memory },
+  { "cpu-usage", adiag_cpu_usage },
 };
 
 /* Mappings of operational data nodes for provisioning functions to functions. */
 static const struct rpc_method table_prov[] = {
-    { "cpe-update", prov_cpe_update },
-    { "cpe-reboot", prov_cpe_reboot },
-    { "cpe-factory-reset", prov_factory_reset },
+  { "cpe-update", prov_cpe_update },
+  { "cpe-reboot", prov_cpe_reboot },
+  { "cpe-factory-reset", prov_factory_reset },
 };
 
 static void
 oper_status_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
-    char *json_string;
-    const char *status;
-    struct json_object *r, *t;
-    sr_val_t *val = (sr_val_t *) req->priv;
+  char *json_string;
+  const char *status;
+  struct json_object *r, *t;
 
-    fprintf(stderr, "systemboard cb\n");
-    if (!msg) {
-        return;
-    }
+  struct status_container {
+      sr_val_t *value;
+      char *status_parameter;
+  } *status_container_msg;
 
-    json_string = blobmsg_format_json(msg, true);
-    r = json_tokener_parse(json_string);
-    INF("%s", json_string);
-    json_object_object_get_ex(r, "up", &t);
+  status_container_msg = (struct status_container *) req->priv;
 
-    status = json_object_to_json_string(t);
-    INF("%s", status);
+  sr_val_t *val = (sr_val_t *) status_container_msg->value;
 
-    sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/version");
-    sr_val_set_str_data(val, SR_STRING_T, status);
+  fprintf(stderr, "systemboard cb\n");
+  if (!msg) {
+      return;
+  }
 
-    json_object_put(r);
-    free(json_string);
+  json_string = blobmsg_format_json(msg, true);
+  r = json_tokener_parse(json_string);
+  INF("\n---JSON_STRING = %s \n---", json_string);
+
+  /* UP */
+  json_object_object_get_ex(r, "up", &t);
+  status = json_object_to_json_string(t);
+  INF("\n---UP = %s \n---", status);
+  sr_val_set_str_data(val, SR_ENUM_T, strdup(status));
+
+  json_object_object_get_ex(r, "dns-server", &t);
+  status = json_object_to_json_string(t);
+  INF("\n---DNS = %s \n---", status);
+
+
+  INF("%s", status_container_msg->value->xpath);
+  /* sr_val_set_str_data(val, SR_STRING_T, strdup(status)); */
+  sr_val_set_str_data(val, SR_ENUM_T, "up");
+
+  INF_MSG("\n---END= \n---");
+  json_object_put(r);
+  free(json_string);
+  INF_MSG("\n---ENDEND= \n---");
 }
 
 static int
-oper_status(sr_val_t *val)
+oper_status(const char *ubus_path, sr_val_t *val)
 {
-    uint32_t id = 0;
-    struct blob_buf buf = {0,};
-    int rc = SR_ERR_OK;
-    struct ubus_context *ctx = ubus_connect(NULL);
-    if (ctx == NULL) {
-        fprintf(stderr, "Cant allocate ubus\n");
-        goto exit;
-    }
+  uint32_t id = 0;
+  struct blob_buf buf = {0,};
+  int rc = SR_ERR_OK;
 
-    blob_buf_init(&buf, 0);
+  struct status_container {
+      sr_val_t *value;
+      char *status_parameter;
+  } *status_container_msg;
+  status_container_msg = calloc(1, sizeof *status_container_msg);
 
-    rc = ubus_lookup_id(ctx, "network.interface.wan", &id);
+  struct ubus_context *ctx = ubus_connect(NULL);
+  if (ctx == NULL) {
+      fprintf(stderr, "Cant allocate ubus\n");
+      goto exit;
+  }
 
-    if (rc) {
-        fprintf(stderr, "ubus [%d]: no object network.interface.wan\n", rc);
-        goto exit;
-    }
-    rc = ubus_invoke(ctx, id, "status", buf.head, oper_status_cb, (void *) val, 1000);
-    if (rc) {
-        fprintf(stderr, "ubus [%d]: no object status\n", rc);
-        goto exit;
-    }
+  blob_buf_init(&buf, 0);
 
-  exit:
-    blob_buf_free(&buf);
+  rc = ubus_lookup_id(ctx, ubus_path, &id);
 
-    return rc;
+  if (rc) {
+      fprintf(stderr, "ubus [%d]: no object network.interface.wan\n", rc);
+      goto exit;
+  }
+  status_container_msg->status_parameter = "up";
+  status_container_msg->value = val;
+  INF("%s", status_container_msg->value->xpath);
+  rc = ubus_invoke(ctx, id, "status", buf.head, oper_status_cb, (void *) status_container_msg, 1000);
+  if (rc) {
+      fprintf(stderr, "ubus [%d]: no object status\n", rc);
+      goto exit;
+  }
+
+exit:
+  blob_buf_free(&buf);
+
+  return rc;
 
 }
 
 static int
 interface_status_oper_status(sr_val_t *val)
 {
-    int rc = SR_ERR_OK;
+  int rc = SR_ERR_OK;
 
-    /* Sets the value in ubus callback. */
-    oper_status(val);
+  /* Sets the value in ubus callback. */
+  sr_val_set_xpath(&val[0], "/ietf-interfaces:interfaces-state/interface[name='wan']/oper-status");
+  /* sr_val_set_str_data(&val[0], SR_ENUM_T, "up"); */
+  INF_MSG("operstatus val")
+  sr_print_val(&val[0]);
 
-    return rc;
+  oper_status("network.interface.wan", val);
+
+  return rc;
 }
 
-
 static adiag_node_func_m table_interface_status[] = {
-    { "oper-status", interface_status_oper_status },
+  { "oper-status", interface_status_oper_status },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
@@ -136,108 +169,108 @@ static int get_uci_item(struct uci_context *uctx, char *ucipath, char **value);
 static int
 get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
 {
-    int rc = UCI_OK;
-    char path[MAX_UCI_PATH];
-    struct uci_ptr ptr;
+  int rc = UCI_OK;
+  char path[MAX_UCI_PATH];
+  struct uci_ptr ptr;
 
-    sprintf(path, "%s", ucipath);
-    INF("%s %s", path, *value);
+  sprintf(path, "%s", ucipath);
+  INF("%s %s", path, *value);
 
-    rc = uci_lookup_ptr(uctx, &ptr, path, true);
-    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
+  rc = uci_lookup_ptr(uctx, &ptr, path, true);
+  UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
 
-    strcpy(*value, ptr.o->v.string);
+  strcpy(*value, ptr.o->v.string);
 
-  exit:
-    return rc;
+exit:
+  return rc;
 }
 
 static int
 set_uci_item(struct uci_context *uctx, char *ucipath, char *value)
 {
-    int rc = UCI_OK;
-    struct uci_ptr ptr;
-    char *set_path = calloc(1, MAX_UCI_PATH);
+  int rc = UCI_OK;
+  struct uci_ptr ptr;
+  char *set_path = calloc(1, MAX_UCI_PATH);
 
-    sprintf(set_path, "%s%s%s", ucipath, "=", value);
+  sprintf(set_path, "%s%s%s", ucipath, "=", value);
 
-    rc = uci_lookup_ptr(uctx, &ptr, set_path, true);
-    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, set_path);
+  rc = uci_lookup_ptr(uctx, &ptr, set_path, true);
+  UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, set_path);
 
-    rc = uci_set(uctx, &ptr);
-    UCI_CHECK_RET(rc, exit, "uci_set %d %s", rc, set_path);
+  rc = uci_set(uctx, &ptr);
+  UCI_CHECK_RET(rc, exit, "uci_set %d %s", rc, set_path);
 
-    rc = uci_save(uctx, ptr.p);
-    UCI_CHECK_RET(rc, exit, "uci_save %d %s", rc, set_path);
+  rc = uci_save(uctx, ptr.p);
+  UCI_CHECK_RET(rc, exit, "uci_save %d %s", rc, set_path);
 
-    rc = uci_commit(uctx, &(ptr.p), false);
-    UCI_CHECK_RET(rc, exit, "uci_commit %d %s", rc, set_path);
+  rc = uci_commit(uctx, &(ptr.p), false);
+  UCI_CHECK_RET(rc, exit, "uci_commit %d %s", rc, set_path);
 
-  exit:
-    free(set_path);
+exit:
+  free(set_path);
 
-    return rc;
+  return rc;
 }
 
 static int
 config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *xpath, char *ucipath)
 {
-    char *val_str;
-    sr_val_t *val = NULL;
-    int rc = SR_ERR_OK;
+  char *val_str;
+  sr_val_t *val = NULL;
+  int rc = SR_ERR_OK;
 
-    rc = sr_get_item(sess, xpath, &val);
-    /* SR_CHECK_RET(rc, exit, "sr_get_item %s for xpath %s", sr_strerror(rc), xpath); */
+  rc = sr_get_item(sess, xpath, &val);
+  /* SR_CHECK_RET(rc, exit, "sr_get_item %s for xpath %s", sr_strerror(rc), xpath); */
 
-    if (SR_ERR_OK == rc) {
-        val_str = sr_val_to_str(val);
-        SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+  if (SR_ERR_OK == rc) {
+      val_str = sr_val_to_str(val);
+      SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
-        rc = set_uci_item(pctx->uctx, ucipath, val_str);
-        UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
-    }
+      rc = set_uci_item(pctx->uctx, ucipath, val_str);
+      UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+  }
 
-  exit:
-    return rc;
+exit:
+  return rc;
 }
 
 static int
 config_ucipath_to_xpath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, char *ucipath, char *xpath)
 {
-    char *uci_val = calloc(1, 100);
-    int rc = SR_ERR_OK;
+  char *uci_val = calloc(1, 100);
+  int rc = SR_ERR_OK;
 
-    rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
-    /* UCI_CHECK_RET(rc, exit, "get_uci_item %s", sr_strerror(rc)); */
-    if (UCI_OK == rc) {
-        INF("xpath %s -> ucival %s", xpath, uci_val);
-        rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
-        SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
-    }
+  rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
+  /* UCI_CHECK_RET(rc, exit, "get_uci_item %s", sr_strerror(rc)); */
+  if (UCI_OK == rc) {
+      INF("xpath %s -> ucival %s", xpath, uci_val);
+      rc = sr_set_item_str(sess, xpath, uci_val, SR_EDIT_DEFAULT);
+      SR_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+  }
 
-    INF("Set %s to %s", xpath, uci_val);
+  INF("Set %s to %s", xpath, uci_val);
 
-    return SR_ERR_OK;
+  return SR_ERR_OK;
 
- exit:
-    if (uci_val) {
-        free(uci_val);
-    }
+exit:
+  if (uci_val) {
+      free(uci_val);
+  }
 
-    return rc;
+  return rc;
 }
 
 static int
 config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
 {
-    /* Read Sysrepo configuration. */
-    /* for (xpath, ucipath) in table_sr_uci */
-    char *xpath = NULL;
-    char *ucipath = NULL;
-    const int n_mappings = ARR_SIZE(table_sr_uci);
-    int rc = SR_ERR_OK;
+  /* Read Sysrepo configuration. */
+  /* for (xpath, ucipath) in table_sr_uci */
+  char *xpath = NULL;
+  char *ucipath = NULL;
+  const int n_mappings = ARR_SIZE(table_sr_uci);
+  int rc = SR_ERR_OK;
 
-    for (int i = 0; i < n_mappings; i++) {
+  for (int i = 0; i < n_mappings; i++) {
         xpath = table_sr_uci[i].xpath;
         ucipath = table_sr_uci[i].ucipath;
         rc = config_xpath_to_ucipath(pctx, sess, xpath, ucipath);
@@ -246,7 +279,7 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         /* SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
     }
 
-  exit:
+  /* exit: */
     if (SR_ERR_NOT_FOUND == rc) {
         rc = SR_ERR_OK;
     }
@@ -269,14 +302,14 @@ config_uci_to_store(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         ucipath = table_sr_uci[i].ucipath;
         fprintf(stderr, "xpath,ucipath : %s, %s\n", xpath, ucipath);
 
-        rc = config_ucipath_to_xpath(pctx, sess, ucipath, xpath);
-        UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
-        SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc));
+        /* rc = config_ucipath_to_xpath(pctx, sess, ucipath, xpath); */
+        /* UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
+        /* SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
     }
 
     rc = sr_commit(sess);
 
-  exit:
+  /* exit: */
     return rc;
 }
 
@@ -321,8 +354,8 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
     rc = sr_commit(session);
     SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
-    rc = config_uci_to_store(pctx, session);
-    SR_CHECK_RET(rc, exit, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+    /* rc = config_uci_to_store(pctx, session); */
+    /* SR_CHECK_RET(rc, exit, "Couldn't initialize interfaces: %s", sr_strerror(rc)); */
 
   exit:
     return rc;
@@ -334,10 +367,10 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     int rc = SR_ERR_OK;
     struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
 
-    INF("module changed %s", module_name);
-    rc = config_store_to_uci(pctx, session);
+    /* rc = config_store_to_uci(pctx, session); */
+    INF("module changed %s %s", module_name, sr_strerror(rc));
 
-    return rc;
+    return SR_ERR_OK;
 }
 
 static int
@@ -386,10 +419,14 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         rc = func(&(*values)[i]);
         /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
       }
-
     }
 
-    /* Debug info: */
+    sleep(1);
+    /* sr_val_set_str_data(values[0], SR_STRING_T, "TODO"); */
+    /* sr_val_set_xpath(values[0], "/ietf-interfaces:interfaces-state/interface[name='wan']/oper-status"); */
+    /* sr_val_set_str_data(values[0], SR_ENUM_T, "up"); */
+
+    INF_MSG("SYSREPO values to return...");
     for (size_t i = 0; i < *values_cnt; i++){
         sr_print_val(&(*values)[i]);
     }
@@ -443,7 +480,8 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    INF("sr_plugin_init_cb for sysrepo-plugin-dt-terastream %s", sr_strerror(rc));
+
     /* Operational data handling. */
     rc = sr_dp_get_items_subscribe(session,
                                    "/ietf-interfaces:interfaces-state",
@@ -454,9 +492,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     /* RPC handlers. */
     rc = init_provisioning_cb(session, subscription);
     SR_CHECK_RET(rc, error, "init_rpc_cb %s", sr_strerror(rc));
-
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,

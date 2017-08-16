@@ -14,7 +14,7 @@ prov_cpe_reboot(const char *xpath, const sr_val_t *input, const size_t input_cnt
   }
   (void) output;
   (void) output_cnt;
-    execl("/sbin/reset", "reset", (char *) NULL);
+  execl("/sbin/reset", "reset", (char *) NULL);
 
     return 0;
 }
