@@ -21,7 +21,7 @@ make_status_container(struct status_container **context,
 }
 
 static void
-oper_status_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
     char *json_string;
     struct json_object *base_object;
@@ -49,7 +49,7 @@ oper_status_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 }
 
 static int
-oper_status(const char *ubus_lookup_path,
+ubus_base(const char *ubus_lookup_path,
             struct status_container *msg)
 {
     uint32_t id = 0;
@@ -71,7 +71,7 @@ oper_status(const char *ubus_lookup_path,
         INF("ubus [%d]: no object %s\n", rc, ubus_lookup_path);
         goto exit;
     }
-    rc = ubus_invoke(ctx, id, msg->ubus_method, buf.head, oper_status_cb, (void *) msg, 1000);
+    rc = ubus_invoke(ctx, id, msg->ubus_method, buf.head, ubus_base_cb, (void *) msg, 1000);
     if (rc) {
         INF("ubus [%d]: no object %s\n", rc, msg->ubus_method);
         goto exit;
@@ -108,7 +108,7 @@ network_operational_operstatus(sr_val_t *val)
 
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", operstatus_transform, val);
-    oper_status("network.interface.wan", msg);
+    ubus_base("network.interface.wan", msg);
 
     return SR_ERR_OK;
 }
@@ -155,7 +155,7 @@ network_operational_mac(sr_val_t *val)
     msg->ubus_method = "status";
 
 
-    oper_status("network.device", msg);
+    ubus_base("network.device", msg);
 
     return SR_ERR_OK;
 }
@@ -189,7 +189,7 @@ network_operational_rx(sr_val_t *val)
 
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", rx_transform, val);
-    oper_status("network.device", msg);
+    ubus_base("network.device", msg);
 
     return SR_ERR_OK;
 }
@@ -224,7 +224,7 @@ network_operational_tx(sr_val_t *val)
 
     struct status_container *msg;
     make_status_container(&msg, "status", tx_transform, val);
-    oper_status("network.device", msg);
+    ubus_base("network.device", msg);
 
     return SR_ERR_OK;
 }
@@ -257,7 +257,7 @@ network_operational_mtu(sr_val_t *val)
 
     struct status_container *msg;
     make_status_container(&msg, "status", mtu_transform, val);
-    oper_status("network.device", msg);
+    ubus_base("network.device", msg);
 
     return SR_ERR_OK;
 }
@@ -307,7 +307,7 @@ network_operational_ip(sr_val_t *val)
 
     struct status_container *msg;
     make_status_container(&msg, "status", ip_transform, val);
-    oper_status("network.interface.wan", msg);
+    ubus_base("network.interface.wan", msg);
 
     return SR_ERR_OK;
 }
@@ -365,7 +365,7 @@ network_operational_ip(sr_val_t *val)
 /*     msg->ubus_method = "arp"; */
 
 
-/*     oper_status("router.net", msg); */
+/*     ubus_base("router.net", msg); */
 
 /*     return SR_ERR_OK; */
 /* } */
