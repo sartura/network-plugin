@@ -8,6 +8,7 @@
 #include <json-c/json.h>
 
 #include "terastream.h"
+#include "network.h"
 #include "adiag_functions.h"
 #include "provisioning.h"
 #include "common.h"
@@ -45,113 +46,15 @@ static const struct rpc_method table_prov[] = {
   { "cpe-factory-reset", prov_factory_reset },
 };
 
-static void
-oper_status_cb(struct ubus_request *req, int type, struct blob_attr *msg)
-{
-  char *json_string;
-  const char *status;
-  struct json_object *r, *t;
-
-  struct status_container {
-      sr_val_t *value;
-      char *status_parameter;
-  } *status_container_msg;
-
-  status_container_msg = (struct status_container *) req->priv;
-
-  sr_val_t *val = (sr_val_t *) status_container_msg->value;
-
-  fprintf(stderr, "systemboard cb\n");
-  if (!msg) {
-      return;
-  }
-
-  json_string = blobmsg_format_json(msg, true);
-  r = json_tokener_parse(json_string);
-  INF("\n---JSON_STRING = %s \n---", json_string);
-
-  /* UP */
-  json_object_object_get_ex(r, "up", &t);
-  status = json_object_to_json_string(t);
-  INF("\n---UP = %s \n---", status);
-  sr_val_set_str_data(val, SR_ENUM_T, strdup(status));
-
-  json_object_object_get_ex(r, "dns-server", &t);
-  status = json_object_to_json_string(t);
-  INF("\n---DNS = %s \n---", status);
-
-
-  INF("%s", status_container_msg->value->xpath);
-  /* sr_val_set_str_data(val, SR_STRING_T, strdup(status)); */
-  sr_val_set_str_data(val, SR_ENUM_T, "up");
-
-  INF_MSG("\n---END= \n---");
-  json_object_put(r);
-  free(json_string);
-  INF_MSG("\n---ENDEND= \n---");
-}
-
-static int
-oper_status(const char *ubus_path, sr_val_t *val)
-{
-  uint32_t id = 0;
-  struct blob_buf buf = {0,};
-  int rc = SR_ERR_OK;
-
-  struct status_container {
-      sr_val_t *value;
-      char *status_parameter;
-  } *status_container_msg;
-  status_container_msg = calloc(1, sizeof *status_container_msg);
-
-  struct ubus_context *ctx = ubus_connect(NULL);
-  if (ctx == NULL) {
-      fprintf(stderr, "Cant allocate ubus\n");
-      goto exit;
-  }
-
-  blob_buf_init(&buf, 0);
-
-  rc = ubus_lookup_id(ctx, ubus_path, &id);
-
-  if (rc) {
-      fprintf(stderr, "ubus [%d]: no object network.interface.wan\n", rc);
-      goto exit;
-  }
-  status_container_msg->status_parameter = "up";
-  status_container_msg->value = val;
-  INF("%s", status_container_msg->value->xpath);
-  rc = ubus_invoke(ctx, id, "status", buf.head, oper_status_cb, (void *) status_container_msg, 1000);
-  if (rc) {
-      fprintf(stderr, "ubus [%d]: no object status\n", rc);
-      goto exit;
-  }
-
-exit:
-  blob_buf_free(&buf);
-
-  return rc;
-
-}
-
-static int
-interface_status_oper_status(sr_val_t *val)
-{
-  int rc = SR_ERR_OK;
-
-  /* Sets the value in ubus callback. */
-  sr_val_set_xpath(&val[0], "/ietf-interfaces:interfaces-state/interface[name='wan']/oper-status");
-  /* sr_val_set_str_data(&val[0], SR_ENUM_T, "up"); */
-  INF_MSG("operstatus val")
-  sr_print_val(&val[0]);
-
-  oper_status("network.interface.wan", val);
-
-  return rc;
-}
 
 static adiag_node_func_m table_interface_status[] = {
-  { "oper-status", interface_status_oper_status },
+  { "oper-status", network_operational_operstatus },
+  { "phys-address", network_operational_mac },
+  { "out-octets", network_operational_rx },
+  { "in-octets", network_operational_tx },
+  { "mtu", network_operational_mtu },
+  { "ip", network_operational_ip },
+  { "neighbor", network_operational_neigh },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
@@ -178,6 +81,10 @@ get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
 
   rc = uci_lookup_ptr(uctx, &ptr, path, true);
   UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
+
+  if (ptr.o == NULL) {
+      return UCI_ERR_NOTFOUND;
+  }
 
   strcpy(*value, ptr.o->v.string);
 
@@ -421,12 +328,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
       }
     }
 
-    sleep(1);
-    /* sr_val_set_str_data(values[0], SR_STRING_T, "TODO"); */
-    /* sr_val_set_xpath(values[0], "/ietf-interfaces:interfaces-state/interface[name='wan']/oper-status"); */
-    /* sr_val_set_str_data(values[0], SR_ENUM_T, "up"); */
-
-    INF_MSG("SYSREPO values to return...");
+    INF("SYSREPO values to return... %lu", *values_cnt);
     for (size_t i = 0; i < *values_cnt; i++){
         sr_print_val(&(*values)[i]);
     }
