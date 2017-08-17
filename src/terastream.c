@@ -54,7 +54,7 @@ static adiag_node_func_m table_interface_status[] = {
   { "in-octets", network_operational_tx },
   { "mtu", network_operational_mtu },
   { "ip", network_operational_ip },
-  { "neighbor", network_operational_neigh },
+  /* { "neighbor", network_operational_neigh }, */
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
