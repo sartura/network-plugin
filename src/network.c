@@ -177,7 +177,7 @@ rx_transform(json_object *base, sr_val_t *value)
     ubus_result = json_object_to_json_string(t);
 
     value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%lu", &value->data.uint64_val);
+    sscanf(ubus_result, "%" PRIu64, &value->data.uint64_val);
     sr_val_set_str_data(value, SR_UINT64_T, ubus_result);
 }
 
@@ -211,8 +211,7 @@ tx_transform(json_object *base, sr_val_t *value)
     ubus_result = json_object_to_json_string(t);
 
     value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%lu", &value->data.uint64_val);
-    INF("%s %lu", ubus_result, value->data.uint64_val);
+    sscanf(ubus_result, "%" PRIu64 , &value->data.uint64_val);
     sr_val_set_str_data(value, SR_UINT64_T, ubus_result);
 }
 

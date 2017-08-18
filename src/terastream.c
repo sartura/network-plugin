@@ -27,6 +27,49 @@ static sr_uci_link table_sr_uci[] =
   { "network.wan.mtu", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv4/mtu" },
   { "network.wan6.mtu", "/ietf-interfaces:interfaces/interface[name='wan6']/ietf-ip:ipv6/mtu" },
   /* { "network.wan.ipaddr", "/ietf-interfaces:interfaces/interface[name='wan']/ietf-ip:ipv6/address" }, */
+
+  /* wireless */
+  {"wireless.%s.type", "/wireless:devices/device[name='%s']/type"},
+  {"wireless.%s.country", "/wireless:devices/device[name='%s']/country"},
+  {"wireless.%s.band", "/wireless:devices/device[name='%s']/band"},
+  {"wireless.%s.bandwidth", "/wireless:devices/device[name='%s']/bandwidth"},
+  {"wireless.%s.scantimer", "/wireless:devices/device[name='%s']/scantimer"},
+  {"wireless.%s.wmm", "/wireless:devices/device[name='%s']/wmm"},
+  {"wireless.%s.wmm_noack",  "/wireless:devices/device[name='%s']/wmm_noack"},
+
+  {"wireless.%s.wmm_apsd","/wireless:devices/device[name='%s']/type" },
+  {"wireless.%s.txpower", "/wireless:devices/device[name='%s']/txpower"},
+  {"wireless.%s.rateset", "/wireless:devices/device[name='%s']/rateset"},
+  {"wireless.%s.frag", "/wireless:devices/device[name='%s']/frag"},
+  {"wireless.%s.rts", "/wireless:devices/device[name='%s']/rts"},
+  {"wireless.%s.dtim_period", "/wireless:devices/device[name='%s']/dtim_period"},
+  {"wireless.%s.beacon_int", "/wireless:devices/device[name='%s']/beacon_int"},
+  {"wireless.%s.rxchainps", "/wireless:devices/device[name='%s']/rxchainps"},
+  {"wireless.%s.rxchainps_qt", "/wireless:devices/device[name='%s']/rxchainps_qt"},
+  {"wireless.%s.rxchainps_pps", "/wireless:devices/device[name='%s']/rxchainps_pps"},
+  {"wireless.%s.rifs", "/wireless:devices/device[name='%s']/rifs"},
+  {"wireless.%s.rifs_advert", "/wireless:devices/device[name='%s']/rifs_advert"},
+  {"wireless.%s.maxassoc", "/wireless:devices/device[name='%s']/maxassoc"},
+  {"wireless.%s.beamforming", "/wireless:devices/device[name='%s']/beamforming"},
+  {"wireless.%s.doth", "/wireless:devices/device[name='%s']/doth"},
+  {"wireless.%s.dfsc", "/wireless:devices/device[name='%s']/dfsc"},
+  {"wireless.%s.channel", "/wireless:devices/device[name='%s']/channel"},
+  {"wireless.%s.disabled", "/wireless:devices/device[name='%s']/disabled"},
+  {"wireless.%s.hwmode", "/wireless:devices/device[name='%s']/hwmode"},
+
+  {"wireless.@wifi-iface[0].device","/wireless:devices/device[name='wl0']/interface[ssid='%s']/device"},
+  {"wireless.@wifi-iface[0].network", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/network"},
+  {"wireless.@wifi-iface[0].mode", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/mode"},
+  {"wireless.@wifi-iface[0].encryption", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/encryption"},
+  {"wireless.@wifi-iface[0].cipher", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/cipher"},
+  {"wireless.@wifi-iface[0].key", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/key"},
+  {"wireless.@wifi-iface[0].gtk_rekey", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/gtk_rekey"},
+  {"wireless.@wifi-iface[0].macfilter", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/macfilter"},
+  {"wireless.@wifi-iface[0].wps_pbc", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/wps_pbc"},
+  {"wireless.@wifi-iface[0].wmf_bss_enable", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/wmf_bss_enable"},
+  {"wireless.@wifi-iface[0].bss_max" , "/wireless:devices/device[name='wl0']/interface[ssid='%s']/bss_max"},
+  {"wireless.@wifi-iface[0].ifname", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/ifname"},
+
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
@@ -45,7 +88,6 @@ static const struct rpc_method table_prov[] = {
   { "cpe-reboot", prov_cpe_reboot },
   { "cpe-factory-reset", prov_factory_reset },
 };
-
 
 static adiag_node_func_m table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
@@ -209,7 +251,8 @@ config_uci_to_store(struct plugin_ctx *pctx, sr_session_ctx_t *sess)
         ucipath = table_sr_uci[i].ucipath;
         fprintf(stderr, "xpath,ucipath : %s, %s\n", xpath, ucipath);
 
-        /* rc = config_ucipath_to_xpath(pctx, sess, ucipath, xpath); */
+        rc = config_ucipath_to_xpath(pctx, sess, ucipath, xpath);
+        INF("fail %s", sr_strerror(rc));
         /* UCI_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
         /* SR_CHECK_RET(rc, exit, "config_ucipath_to_xpath %s", sr_strerror(rc)); */
     }
@@ -268,17 +311,212 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
     return rc;
 }
 
+
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     int rc = SR_ERR_OK;
-    struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
+    /* struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx; */
 
     /* rc = config_store_to_uci(pctx, session); */
     INF("module changed %s %s", module_name, sr_strerror(rc));
 
     return SR_ERR_OK;
 }
+
+#define WIRELESS_DEVICE_NAME_LENGTH 20
+
+typedef struct int_string_tuple_s {
+    size_t index;
+    char *string;
+} int_string_tuple;
+
+static int_string_tuple table_wireless_device_indices[] = {
+    { 0, "wl0" },
+    { 1, "wl1" },
+};
+
+static char *
+get_key_value_nth(char *orig_xpath, int n)
+{
+    char *key = NULL, *node = NULL, *xpath = NULL;
+    sr_xpath_ctx_t state = {0,0,0,0};
+
+    xpath = strdup(orig_xpath);
+
+    node = sr_xpath_next_node(xpath, &state);
+    if (NULL == node) {
+        goto error;
+    }
+    while(true) {
+        key = sr_xpath_next_key_name(NULL, &state);
+        INF("key %s", key);
+        if (NULL != key) {
+            if (n > 0) {
+                n = n - 1;
+                continue;
+            }
+            key = sr_xpath_next_key_value(NULL, &state);
+            break;
+        }
+        INF("node %s", node);
+        node = sr_xpath_next_node(NULL, &state);
+        if (NULL == node) {
+            break;
+        }
+    }
+
+  error:
+    if (NULL != xpath) {
+        free(xpath);
+    }
+    return key ? strdup(key) : NULL;
+}
+
+static char *
+get_key_value(char *orig_xpath)
+{
+    return get_key_value_nth(orig_xpath, 0);
+}
+
+
+static bool
+val_has_data(sr_type_t type) {
+	/* types containing some data */
+	if (type == SR_BINARY_T) return true;
+	else if (type == SR_BITS_T) return true;
+	else if (type == SR_BOOL_T) return true;
+	else if (type == SR_DECIMAL64_T) return true;
+	else if (type == SR_ENUM_T) return true;
+	else if (type == SR_IDENTITYREF_T) return true;
+	else if (type == SR_INSTANCEID_T) return true;
+	else if (type == SR_INT8_T) return true;
+	else if (type == SR_INT16_T) return true;
+	else if (type == SR_INT32_T) return true;
+	else if (type == SR_INT64_T) return true;
+	else if (type == SR_STRING_T) return true;
+	else if (type == SR_UINT8_T) return true;
+	else if (type == SR_UINT16_T) return true;
+	else if (type == SR_UINT32_T) return true;
+	else if (type == SR_UINT64_T) return true;
+	else if (type == SR_ANYXML_T) return true;
+	else if (type == SR_ANYDATA_T) return true;
+	else return false;
+}
+
+static int
+sysrepo_to_uci(struct uci_context *uctx, sr_val_t *new_val)
+{
+    char xpath[MAX_XPATH];
+    char ucipath[MAX_UCI_PATH];
+    char *key = NULL;
+    int rc = SR_ERR_OK;
+
+    if (val_has_data(new_val->type)) {
+        key = get_key_value(new_val->xpath);
+        if (key == NULL) {
+            rc = SR_ERR_INTERNAL;
+            goto error;
+        }
+    }
+
+    const int n_mappings = ARR_SIZE(table_sr_uci);
+    for (int i = 0; i < n_mappings; i++) {
+        snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, key);
+        snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, key);
+        if (0 == strncmp(xpath,new_val->xpath,strlen(xpath))) {
+            char *mem = NULL;
+            mem = sr_val_to_str(new_val);
+            INF("Setting %s to %s", ucipath, mem);
+            rc = set_uci_item(uctx, ucipath, mem);
+            if(mem) free(mem);
+            UCI_CHECK_RET(rc, uci_error, "get_uci_item %s", sr_strerror(rc));
+        }
+    }
+
+    return SR_ERR_OK;
+  error:
+    INF("Failed %s", sr_strerror(rc));
+    return rc;
+  uci_error:
+    return SR_ERR_INTERNAL;
+}
+
+static int
+uci_to_sysrepo(sr_session_ctx_t *session, sr_val_t *value)
+{
+    int rc = SR_ERR_OK;
+
+
+}
+
+static int
+wireless_index_of_device(char *device_name){
+    for (size_t i = 0; i < ARR_SIZE(table_wireless_device_indices); i++) {
+        if (strcmp(table_wireless_device_indices[i].string, device_name) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static char *
+wireless_device_of_index(size_t device_index){
+    for (size_t i = 0; i < ARR_SIZE(table_wireless_device_indices); i++) {
+        if (table_wireless_device_indices[i].index == device_index) {
+            return table_wireless_device_indices[i].string;
+        }
+    }
+
+    return NULL;
+}
+
+static int
+wireless_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
+
+    if (SR_EV_APPLY == event) {
+        INF("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: %s ==========\n\n", module_name);
+        /* print_current_config(session, module_name); */
+    } else {
+        INF("Some insignificant event %d", event);
+        return SR_ERR_OK;
+    }
+
+    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
+    sr_change_oper_t oper;
+    sr_val_t *old_value = NULL;
+    sr_val_t *new_value = NULL;
+    char change_path[MAX_XPATH] = {0,};
+
+    snprintf(change_path, MAX_XPATH, "/%s:*", module_name);
+
+    rc = sr_get_changes_iter(session, change_path , &it);
+    if (SR_ERR_OK != rc) {
+        printf("Get changes iter failed for xpath %s", change_path);
+        goto cleanup;
+    }
+
+    while (SR_ERR_OK == (rc = sr_get_change_next(session, it,
+                &oper, &old_value, &new_value))) {
+        if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
+            sysrepo_to_uci(pctx->uctx, new_value);
+        }
+
+        sr_free_val(old_value);
+        sr_free_val(new_value);
+    }
+    INF_MSG("\n\n ========== END OF CHANGES =======================================\n\n");
+
+cleanup:
+    sr_free_change_iter(it);
+
+    return SR_ERR_OK;
+}
+
 
 static int
 data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
@@ -328,7 +566,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
       }
     }
 
-    INF("SYSREPO values to return... %lu", *values_cnt);
+    INF_MSG("Debug sysrepo values printout:")
     for (size_t i = 0; i < *values_cnt; i++){
         sr_print_val(&(*values)[i]);
     }
@@ -353,6 +591,54 @@ init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscript
         SR_CHECK_RET(rc, exit, "initialization of rpc handler: %s failed with: %s",
                      table_prov[i].name, sr_strerror(rc));
     }
+
+  exit:
+    return rc;
+}
+
+static int
+init_wireless(struct plugin_ctx *pctx, sr_session_ctx_t *session)
+{
+    int rc = SR_ERR_OK;
+    struct uci_element *e;
+    struct uci_section *s;
+    struct uci_package *package = NULL;
+    char xpath[MAX_XPATH];
+    char ucipath[MAX_UCI_PATH];
+
+    rc = uci_load(pctx->uctx, "wireless", &package);
+
+
+    uci_foreach_element(&package->sections, e) {
+        s = uci_to_section(e);
+        char *type = s->type;
+        char *name = s->e.name;
+
+        if (strcmp("wifi-device", type) == 0) {
+            for (size_t i = 0; i < ARR_SIZE(table_sr_uci); i++) {
+                char *uci_val = calloc(1, 100);
+
+                snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, name);
+                snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
+                if (!strstr(ucipath, "wireless")) {
+                    continue;
+                }
+                rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
+                if (UCI_ERR_NOTFOUND == rc) {
+                    continue;
+                }
+                SR_CHECK_RET(rc, exit, "uci getitem: %s %s", ucipath, sr_strerror(rc));
+                INF("Setting %s to %s", xpath, uci_val);
+                rc = sr_set_item_str(session, xpath, uci_val, SR_EDIT_DEFAULT);
+                SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
+                free(uci_val);
+            }
+        }
+    }
+
+
+    rc = sr_commit(session);
+    SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
   exit:
     return rc;
@@ -400,10 +686,20 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
+    INF_MSG("sr_plugin_init_cb for wireless");
+    rc = sr_module_change_subscribe(session, "wireless", wireless_change_cb, *private_ctx,
+                                    0, SR_SUBSCR_DEFAULT, &subscription);
+    SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
+
 
     /* Init type for interface... */
     rc = init_interfaces(ctx, session);
     SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+
+    /* Init wireless. */
+    rc = init_wireless(ctx, session);
+    SR_CHECK_RET(rc, error, "Couldn't initialize wirelessx: %s", sr_strerror(rc));
+
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
