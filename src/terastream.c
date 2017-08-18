@@ -57,18 +57,19 @@ static sr_uci_link table_sr_uci[] =
   {"wireless.%s.disabled", "/wireless:devices/device[name='%s']/disabled"},
   {"wireless.%s.hwmode", "/wireless:devices/device[name='%s']/hwmode"},
 
-  {"wireless.@wifi-iface[0].device","/wireless:devices/device[name='wl0']/interface[ssid='%s']/device"},
-  {"wireless.@wifi-iface[0].network", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/network"},
-  {"wireless.@wifi-iface[0].mode", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/mode"},
-  {"wireless.@wifi-iface[0].encryption", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/encryption"},
-  {"wireless.@wifi-iface[0].cipher", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/cipher"},
-  {"wireless.@wifi-iface[0].key", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/key"},
-  {"wireless.@wifi-iface[0].gtk_rekey", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/gtk_rekey"},
-  {"wireless.@wifi-iface[0].macfilter", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/macfilter"},
-  {"wireless.@wifi-iface[0].wps_pbc", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/wps_pbc"},
-  {"wireless.@wifi-iface[0].wmf_bss_enable", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/wmf_bss_enable"},
-  {"wireless.@wifi-iface[0].bss_max" , "/wireless:devices/device[name='wl0']/interface[ssid='%s']/bss_max"},
-  {"wireless.@wifi-iface[0].ifname", "/wireless:devices/device[name='wl0']/interface[ssid='%s']/ifname"},
+  /* {"wireless.@wifi-iface[%d].ssid","/wireless:devices/device[name='%s']/interface[ssid='%s']/ssid"}, */
+  {"wireless.@wifi-iface[%d].device","/wireless:devices/device[name='%s']/interface[ssid='%s']/device"},
+  {"wireless.@wifi-iface[%d].network", "/wireless:devices/device[name='%s']/interface[ssid='%s']/network"},
+  {"wireless.@wifi-iface[%d].mode", "/wireless:devices/device[name='%s']/interface[ssid='%s']/mode"},
+  {"wireless.@wifi-iface[%d].encryption", "/wireless:devices/device[name='%s']/interface[ssid='%s']/encryption"},
+  {"wireless.@wifi-iface[%d].cipher", "/wireless:devices/device[name='%s']/interface[ssid='%s']/cipher"},
+  {"wireless.@wifi-iface[%d].key", "/wireless:devices/device[name='%s']/interface[ssid='%s']/key"},
+  {"wireless.@wifi-iface[%d].gtk_rekey", "/wireless:devices/device[name='%s']/interface[ssid='%s']/gtk_rekey"},
+  {"wireless.@wifi-iface[%d].macfilter", "/wireless:devices/device[name='%s']/interface[ssid='%s']/macfilter"},
+  {"wireless.@wifi-iface[%d].wps_pbc", "/wireless:devices/device[name='%s']/interface[ssid='%s']/wps_pbc"},
+  {"wireless.@wifi-iface[%d].wmf_bss_enable", "/wireless:devices/device[name='%s']/interface[ssid='%s']/wmf_bss_enable"},
+  {"wireless.@wifi-iface[%d].bss_max" , "/wireless:devices/device[name='%s']/interface[ssid='%s']/bss_max"},
+  {"wireless.@wifi-iface[%d].ifname", "/wireless:devices/device[name='%s']/interface[ssid='%s']/ifname"},
 
 };
 
@@ -412,6 +413,7 @@ sysrepo_to_uci(struct uci_context *uctx, sr_val_t *new_val)
     char *key = NULL;
     int rc = SR_ERR_OK;
 
+    INF("Getting key for xpath %s %s", new_val->xpath, strstr(new_val->xpath, "@wifi-iface"));
     if (val_has_data(new_val->type)) {
         key = get_key_value(new_val->xpath);
         if (key == NULL) {
@@ -422,6 +424,9 @@ sysrepo_to_uci(struct uci_context *uctx, sr_val_t *new_val)
 
     const int n_mappings = ARR_SIZE(table_sr_uci);
     for (int i = 0; i < n_mappings; i++) {
+        if (strstr(new_val->xpath, "@wifi-iface")) {
+            continue;
+        }
         snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, key);
         snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, key);
         if (0 == strncmp(xpath,new_val->xpath,strlen(xpath))) {
@@ -608,21 +613,23 @@ init_wireless(struct plugin_ctx *pctx, sr_session_ctx_t *session)
 
     rc = uci_load(pctx->uctx, "wireless", &package);
 
-
     uci_foreach_element(&package->sections, e) {
         s = uci_to_section(e);
         char *type = s->type;
         char *name = s->e.name;
 
+        INF("uci name type %s %s", name, type);
+
         if (strcmp("wifi-device", type) == 0) {
             for (size_t i = 0; i < ARR_SIZE(table_sr_uci); i++) {
                 char *uci_val = calloc(1, 100);
 
-                snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, name);
-                snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
-                if (!strstr(ucipath, "wireless")) {
+                if (strstr(table_sr_uci[i].ucipath, "@wifi-iface")) {
                     continue;
                 }
+
+                snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, name);
+                snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
                 rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
                 if (UCI_ERR_NOTFOUND == rc) {
                     continue;
@@ -632,6 +639,34 @@ init_wireless(struct plugin_ctx *pctx, sr_session_ctx_t *session)
                 rc = sr_set_item_str(session, xpath, uci_val, SR_EDIT_DEFAULT);
                 SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
                 free(uci_val);
+
+                for (size_t i = 0; i < ARR_SIZE(table_sr_uci); i++) {
+                    char *uci_val = calloc(1, 100);
+                    char *ssid = NULL;
+
+                    if (!strstr(table_sr_uci[i].ucipath, "@wifi-iface")) {
+                        continue;
+                    }
+
+                    snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, 0);
+                    rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
+                    if (UCI_ERR_NOTFOUND == rc) {
+                        continue;
+                    }
+                    if (strstr(ucipath, "ssid") != NULL) {
+                        ssid = strdup(uci_val);
+                    }
+ 
+                    if (NULL == ssid) {
+                        continue;
+                    }
+                    snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, name, ssid);
+                    SR_CHECK_RET(rc, exit, "uci getitem: %s %s", ucipath, sr_strerror(rc));
+                    INF("Setting %s to %s", xpath, uci_val);
+                    rc = sr_set_item_str(session, xpath, uci_val, SR_EDIT_DEFAULT);
+                    SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
+                    free(uci_val);
+                }
             }
         }
     }
