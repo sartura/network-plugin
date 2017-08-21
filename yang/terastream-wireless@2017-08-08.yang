@@ -167,9 +167,16 @@ module wireless {
             description
               "List of configured interfaces on device";
 
+            unique "index";
+
             leaf device {
                  type string;
                  default "wl0";
+            }
+
+            leaf index {
+                 type int32;
+                  default "0";
             }
 
             leaf network {

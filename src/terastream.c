@@ -21,6 +21,7 @@ typedef struct sr_uci_mapping {
   char *xpath;
 } sr_uci_link;
 
+
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
@@ -36,7 +37,6 @@ static sr_uci_link table_sr_uci[] =
   {"wireless.%s.scantimer", "/wireless:devices/device[name='%s']/scantimer"},
   {"wireless.%s.wmm", "/wireless:devices/device[name='%s']/wmm"},
   {"wireless.%s.wmm_noack",  "/wireless:devices/device[name='%s']/wmm_noack"},
-
   {"wireless.%s.wmm_apsd","/wireless:devices/device[name='%s']/type" },
   {"wireless.%s.txpower", "/wireless:devices/device[name='%s']/txpower"},
   {"wireless.%s.rateset", "/wireless:devices/device[name='%s']/rateset"},
@@ -57,7 +57,7 @@ static sr_uci_link table_sr_uci[] =
   {"wireless.%s.disabled", "/wireless:devices/device[name='%s']/disabled"},
   {"wireless.%s.hwmode", "/wireless:devices/device[name='%s']/hwmode"},
 
-  /* {"wireless.@wifi-iface[%d].ssid","/wireless:devices/device[name='%s']/interface[ssid='%s']/ssid"}, */
+  {"wireless.@wifi-iface[%d].ssid","/wireless:devices/device[name='%s']/interface[ssid='%s']/ssid"},
   {"wireless.@wifi-iface[%d].device","/wireless:devices/device[name='%s']/interface[ssid='%s']/device"},
   {"wireless.@wifi-iface[%d].network", "/wireless:devices/device[name='%s']/interface[ssid='%s']/network"},
   {"wireless.@wifi-iface[%d].mode", "/wireless:devices/device[name='%s']/interface[ssid='%s']/mode"},
@@ -100,6 +100,8 @@ static adiag_node_func_m table_interface_status[] = {
   /* { "neighbor", network_operational_neigh }, */
 };
 
+const char *index_fmt = "/wireless:devices/device[name='%s']/interface[ssid='%s']/index";
+
 /* Update UCI configuration from Sysrepo datastore. */
 static int config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess);
 
@@ -120,8 +122,6 @@ get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
   struct uci_ptr ptr;
 
   sprintf(path, "%s", ucipath);
-  INF("%s %s", path, *value);
-
   rc = uci_lookup_ptr(uctx, &ptr, path, true);
   UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
 
@@ -332,13 +332,51 @@ typedef struct int_string_tuple_s {
     char *string;
 } int_string_tuple;
 
-static int_string_tuple table_wireless_device_indices[] = {
-    { 0, "wl0" },
-    { 1, "wl1" },
-};
+static char *
+get_key_value_second(char *orig_xpath)
+{
+  char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL;
+    sr_xpath_ctx_t state = {0,0,0,0};
+
+    xpath = strdup(orig_xpath);
+    char name[100], ssid[100];
+
+    char *cur = strstr(xpath, "ssid");
+    if (!cur) {
+      return NULL;
+    }
+
+    node = sr_xpath_next_node(xpath, &state);
+    if (NULL == node) {
+      goto error;
+    }
+    INF("XPATH %s", orig_xpath);
+    int counter = 0;
+    while(true) {
+      key = sr_xpath_next_key_name(NULL, &state);
+      if (NULL != key) {
+        val = sr_xpath_next_key_value(NULL, &state);
+        if (++counter == 2) break;
+        /* break; */
+      }
+      INF("\tKEY %s:%s", key, val);
+      node = sr_xpath_next_node(NULL, &state);
+      if (NULL == node) {
+        break;
+      }
+      INF("\tNODE %s", node);
+    }
+
+
+  error:
+    if (NULL != xpath) {
+        free(xpath);
+    }
+    return key ? strdup(val) : NULL;
+}
 
 static char *
-get_key_value_nth(char *orig_xpath, int n)
+get_key_value(char *orig_xpath)
 {
     char *key = NULL, *node = NULL, *xpath = NULL;
     sr_xpath_ctx_t state = {0,0,0,0};
@@ -351,16 +389,10 @@ get_key_value_nth(char *orig_xpath, int n)
     }
     while(true) {
         key = sr_xpath_next_key_name(NULL, &state);
-        INF("key %s", key);
         if (NULL != key) {
-            if (n > 0) {
-                n = n - 1;
-                continue;
-            }
             key = sr_xpath_next_key_value(NULL, &state);
             break;
         }
-        INF("node %s", node);
         node = sr_xpath_next_node(NULL, &state);
         if (NULL == node) {
             break;
@@ -372,12 +404,6 @@ get_key_value_nth(char *orig_xpath, int n)
         free(xpath);
     }
     return key ? strdup(key) : NULL;
-}
-
-static char *
-get_key_value(char *orig_xpath)
-{
-    return get_key_value_nth(orig_xpath, 0);
 }
 
 
@@ -405,76 +431,158 @@ val_has_data(sr_type_t type) {
 	else return false;
 }
 
+static struct wireless_device {
+    char *name, *option;
+};
+
+static struct wireless_interface {
+    int32_t index;
+    char *option;
+};
+
 static int
-sysrepo_to_uci(struct uci_context *uctx, sr_val_t *new_val)
-{
-    char xpath[MAX_XPATH];
-    char ucipath[MAX_UCI_PATH];
-    char *key = NULL;
-    int rc = SR_ERR_OK;
+wireless_xpath_to_device(char *orig_xpath, struct wireless_device *dev) {
+    char *key = NULL, *node = NULL, *xpath = NULL;
+    sr_xpath_ctx_t state = {0,0,0,0};
 
-    INF("Getting key for xpath %s %s", new_val->xpath, strstr(new_val->xpath, "@wifi-iface"));
-    if (val_has_data(new_val->type)) {
-        key = get_key_value(new_val->xpath);
-        if (key == NULL) {
-            rc = SR_ERR_INTERNAL;
-            goto error;
+    xpath = strdup(orig_xpath);
+
+    node = sr_xpath_next_node(xpath, &state);
+    if (NULL == node) {
+        goto error;
+    }
+
+    while(true) {
+        key = sr_xpath_next_key_name(NULL, &state);
+        if (NULL != key) {
+            key = sr_xpath_next_key_value(NULL, &state);
+            dev->name = strdup(key);
+            break;
+        }
+        node = sr_xpath_next_node(NULL, &state);
+        if (NULL == node) {
+            break;
         }
     }
 
-    const int n_mappings = ARR_SIZE(table_sr_uci);
-    for (int i = 0; i < n_mappings; i++) {
-        if (strstr(new_val->xpath, "@wifi-iface")) {
-            continue;
-        }
-        snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, key);
-        snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, key);
-        if (0 == strncmp(xpath,new_val->xpath,strlen(xpath))) {
-            char *mem = NULL;
-            mem = sr_val_to_str(new_val);
-            INF("Setting %s to %s", ucipath, mem);
-            rc = set_uci_item(uctx, ucipath, mem);
-            if(mem) free(mem);
-            UCI_CHECK_RET(rc, uci_error, "get_uci_item %s", sr_strerror(rc));
-        }
-    }
+    sr_xpath_recover(&state);
+    dev->option = sr_xpath_last_node(xpath, &state);
 
     return SR_ERR_OK;
+
   error:
-    INF("Failed %s", sr_strerror(rc));
-    return rc;
-  uci_error:
-    return SR_ERR_INTERNAL;
-}
-
-static int
-uci_to_sysrepo(sr_session_ctx_t *session, sr_val_t *value)
-{
-    int rc = SR_ERR_OK;
-
-
-}
-
-static int
-wireless_index_of_device(char *device_name){
-    for (size_t i = 0; i < ARR_SIZE(table_wireless_device_indices); i++) {
-        if (strcmp(table_wireless_device_indices[i].string, device_name) == 0) {
-            return i;
-        }
+    if (NULL != xpath) {
+        free(xpath);
     }
-
     return -1;
 }
 
-static char *
-wireless_device_of_index(size_t device_index){
-    for (size_t i = 0; i < ARR_SIZE(table_wireless_device_indices); i++) {
-        if (table_wireless_device_indices[i].index == device_index) {
-            return table_wireless_device_indices[i].string;
-        }
+static int
+wireless_xpath_to_interface(sr_session_ctx_t *session, char *xpath, struct wireless_interface *interface) {
+    char *name_key = NULL, *node = NULL, *ssid_key = NULL;
+    sr_xpath_ctx_t state = {0,0,0,0};
+
+    name_key = get_key_value(xpath);
+    ssid_key = get_key_value_second(xpath);
+
+    char index_xpath[MAX_XPATH];
+    sprintf(index_xpath, index_fmt, name_key, ssid_key);
+
+    sr_val_t *value = NULL;
+    int rc = sr_get_item(session, index_xpath, &value);
+    if (rc) {
+        goto error;
     }
 
-    return NULL;
+    interface->index = value->data.int32_val;
+
+    interface->option = sr_xpath_last_node(xpath, &state);
+    sr_xpath_recover(&state);
+
+    return SR_ERR_OK;
+
+  error:
+   return -1;
+}
+
+static int
+sysrepo_to_uci(sr_session_ctx_t  *session, struct uci_context *uctx, sr_val_t *new_val)
+{
+    char xpath[MAX_XPATH];
+    char ucipath[MAX_UCI_PATH];
+    char *key = NULL, *ssid_key;
+    sr_val_t *value;
+    char *mem = NULL;
+    int rc = SR_ERR_OK;
+
+    if (false == val_has_data(new_val->type)) {
+        return SR_ERR_OK;
+    }
+
+    if (strstr(new_val->xpath, "interface")) {
+        INF("INTERFACE: %s", new_val->xpath);
+        /* handle interface  */
+        /* key = get_key_value(new_val->xpath); */
+        /* ssid_key = get_key_value_second(new_val->xpath); */
+        struct wireless_interface interface = { 0, };
+        rc = wireless_xpath_to_interface(session, new_val->xpath, &interface);
+        if (rc < 0) {
+            rc = SR_ERR_INTERNAL;
+            goto error;
+        }
+        INF("INTERFACE: %d %s", interface.index, interface.option);
+        snprintf(ucipath, MAX_XPATH, "wireless.@wifi-iface[%d].%s", interface.index, interface.option);
+        mem = sr_val_to_str(new_val);
+        INF("Setting %s to %s", ucipath, mem);
+        rc = set_uci_item(uctx, ucipath, mem);
+        UCI_CHECK_RET(rc, uci_error, "get_uci_item %s", sr_strerror(rc));
+        if(mem) free(mem);
+
+        /* if (key == NULL || ssid_key == NULL) { */
+        /*     rc = SR_ERR_INTERNAL; */
+        /*     goto error; */
+        /* } */
+        goto exit;
+    }
+
+    if (strstr(new_val->xpath, "device")) {
+        /* handle device  */
+        /* key = get_key_value(new_val->xpath) */;
+        struct wireless_device dev = { 0, 0, };
+        rc = wireless_xpath_to_device(new_val->xpath, &dev);
+        if (rc < 0) {
+            rc = SR_ERR_INTERNAL;
+            goto error;
+        }
+        INF("DEVICE: %s %s", dev.name, dev.option);
+        snprintf(ucipath, MAX_XPATH, "wireless.%s.%s", dev.name, dev.option);
+        mem = sr_val_to_str(new_val);
+        INF("Setting %s to %s", ucipath, mem);
+        rc = set_uci_item(uctx, ucipath, mem);
+        UCI_CHECK_RET(rc, uci_error, "get_uci_item %s", sr_strerror(rc));
+        if(mem) free(mem);
+
+        goto exit;
+    }
+
+    /* INF("Getting key for xpath %s", new_val->xpath); */
+    /* if (val_has_data(new_val->type)) { */
+    /*     key = get_key_value(new_val->xpath); */
+    /*     ssid_key = get_key_value_second(new_val->xpath); */
+    /*     if (key == NULL) { */
+    /*         rc = SR_ERR_INTERNAL; */
+    /*         goto error; */
+    /*     } */
+        
+    /*     INF("\n\t%s\n\t%s", new_val->xpath, ssid_key); */
+    /* } */
+
+  exit:
+    return SR_ERR_OK;
+  error:
+    return rc;
+  uci_error:
+    return SR_ERR_INTERNAL;
 }
 
 static int
@@ -508,7 +616,9 @@ wireless_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_
     while (SR_ERR_OK == (rc = sr_get_change_next(session, it,
                 &oper, &old_value, &new_value))) {
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
-            sysrepo_to_uci(pctx->uctx, new_value);
+            /* sr_print_val(new_value); */
+            rc = sysrepo_to_uci(session, pctx->uctx, new_value);
+            INF("Update %s [%d]", new_value->xpath, rc);
         }
 
         sr_free_val(old_value);
@@ -612,13 +722,14 @@ init_wireless(struct plugin_ctx *pctx, sr_session_ctx_t *session)
     char ucipath[MAX_UCI_PATH];
 
     rc = uci_load(pctx->uctx, "wireless", &package);
+    int interface_index = 0;
 
     uci_foreach_element(&package->sections, e) {
         s = uci_to_section(e);
         char *type = s->type;
         char *name = s->e.name;
 
-        INF("uci name type %s %s", name, type);
+        /* INF("uci name type %s %s", name, type); */
 
         if (strcmp("wifi-device", type) == 0) {
             for (size_t i = 0; i < ARR_SIZE(table_sr_uci); i++) {
@@ -635,39 +746,58 @@ init_wireless(struct plugin_ctx *pctx, sr_session_ctx_t *session)
                     continue;
                 }
                 SR_CHECK_RET(rc, exit, "uci getitem: %s %s", ucipath, sr_strerror(rc));
-                INF("Setting %s to %s", xpath, uci_val);
+                /* INF("Setting device %s to %s", xpath, uci_val); */
                 rc = sr_set_item_str(session, xpath, uci_val, SR_EDIT_DEFAULT);
                 SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
                 free(uci_val);
 
-                for (size_t i = 0; i < ARR_SIZE(table_sr_uci); i++) {
-                    char *uci_val = calloc(1, 100);
-                    char *ssid = NULL;
+                char *ssid = calloc(1,100);
 
-                    if (!strstr(table_sr_uci[i].ucipath, "@wifi-iface")) {
+                for (size_t j = 0; j < ARR_SIZE(table_sr_uci); j++) {
+                    char *uci_val = calloc(1, 100);
+
+                    /* INF("[%s][%d] Setting interface %s %s", name, interface_index, */
+                    /*     table_sr_uci[j].ucipath, table_sr_uci[j].xpath) */
+                    if (!strstr(table_sr_uci[j].ucipath, "@wifi-iface")) {
                         continue;
                     }
 
-                    snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, 0);
+                    snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[j].ucipath, interface_index);
                     rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
                     if (UCI_ERR_NOTFOUND == rc) {
                         continue;
                     }
                     if (strstr(ucipath, "ssid") != NULL) {
                         ssid = strdup(uci_val);
+                        strcpy(ssid, uci_val);
+                        continue;
+
                     }
- 
+                    /* INF("\titem found %s with ssid %s", uci_val, ssid); */
+
                     if (NULL == ssid) {
                         continue;
                     }
-                    snprintf(xpath, MAX_XPATH, table_sr_uci[i].xpath, name, ssid);
-                    SR_CHECK_RET(rc, exit, "uci getitem: %s %s", ucipath, sr_strerror(rc));
-                    INF("Setting %s to %s", xpath, uci_val);
+                    snprintf(xpath, MAX_XPATH, table_sr_uci[j].xpath, name, ssid);
+                    /* INF("Setting interface %s to %s", xpath, uci_val); */
                     rc = sr_set_item_str(session, xpath, uci_val, SR_EDIT_DEFAULT);
                     SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
+
+                    snprintf(xpath, MAX_XPATH, index_fmt, name, ssid);
+                    sr_val_t *value = NULL;
+                    sr_new_val(xpath, &value);
+                    value->type = SR_INT32_T;
+                    value->data.int32_val = interface_index;
+                    rc = sr_set_item(session, xpath, value, SR_EDIT_DEFAULT);
+                    SR_CHECK_RET(rc, exit, "sr setitem: %s %s %s", sr_strerror(rc), xpath, uci_val);
+
                     free(uci_val);
                 }
+
+
+                free(ssid);
             }
+            interface_index = interface_index + 1;
         }
     }
 
