@@ -44,9 +44,9 @@ module wireless {
         leaf band {
              type string;
              default "a";
-             }
+        }
 
-             leaf bandwidth {
+        leaf bandwidth {
              type int32;
              default "80";
         }
