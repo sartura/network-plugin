@@ -32,8 +32,8 @@ static sr_uci_link table_sr_uci[] =
     { "1500", SR_UINT16_T, "network.%s.mtu",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
 
-    { "24",  SR_UINT8_T, "network.%s.ipaddr",
-      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
+    /* { "24",  SR_UINT8_T, "network.%s.ipaddr", */
+    /*   "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" }, */
     /* { "64",  SR_UINT8_T, "network.%s.ipaddr", */
     /*   "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" }, */
 
@@ -300,8 +300,6 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
 static int
 config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *value)
 {
-  /* Read Sysrepo configuration. */
-  /* for (xpath, ucipath) in table_sr_uci */
   const int n_mappings = ARR_SIZE(table_sr_uci);
   int rc = SR_ERR_OK;
 
