@@ -275,16 +275,12 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
     char *val_str;
     char ucipath[MAX_UCI_PATH] ;
     char xpath[MAX_XPATH];
-    sr_val_t *val = NULL;
     int rc = SR_ERR_OK;
     char *device_name = get_key_value(value->xpath);
 
     sprintf(xpath, mapping->xpath, device_name);
 
-    rc = sr_get_item(sess, xpath, &val);
-    SR_CHECK_RET(rc, exit, "sr_get_item %s for xpath %s", sr_strerror(rc), xpath);
-
-    val_str = SR_ERR_NOT_FOUND == rc ? mapping->default_value : sr_val_to_str(val);
+    val_str = SR_ERR_NOT_FOUND == rc ? mapping->default_value : sr_val_to_str(value);
     if (NULL == val_str) {
         goto exit;
     }
@@ -303,12 +299,13 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *v
   const int n_mappings = ARR_SIZE(table_sr_uci);
   int rc = SR_ERR_OK;
 
+  if (false == val_has_data(value->type)) {
+    return SR_ERR_OK;
+  }
+ 
   for (int i = 0; i < n_mappings; i++) {
-      if (false == val_has_data(value->type)) {
-          continue;
-      }
-      rc = config_xpath_to_ucipath(pctx, sess, &table_sr_uci[i], value);
-    }
+     rc = config_xpath_to_ucipath(pctx, sess, &table_sr_uci[i], value);
+  }
 
   /* exit: */
     if (SR_ERR_NOT_FOUND == rc) {
@@ -831,6 +828,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     *private_ctx = ctx;
 
     /* Operational data handling. */
+    INF_MSG("Subscribing to diagnostics");
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
@@ -838,6 +836,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     INF("sr_plugin_init_cb for sysrepo-plugin-dt-terastream %s", sr_strerror(rc));
 
     /* Operational data handling. */
+    INF_MSG("Subscribing to operational data");
     rc = sr_dp_get_items_subscribe(session,
                                    "/ietf-interfaces:interfaces-state",
                                    data_provider_cb, *private_ctx,
