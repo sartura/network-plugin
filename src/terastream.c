@@ -32,10 +32,10 @@ static sr_uci_link table_sr_uci[] =
     { "1500", SR_UINT16_T, "network.%s.mtu",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
 
-    /* { "24",  SR_UINT8_T, "network.%s.ipaddr", */
-    /*   "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" }, */
-    /* { "64",  SR_UINT8_T, "network.%s.ipaddr", */
-    /*   "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" }, */
+    { "24",  SR_UINT8_T, "network.%s.ipaddr",
+      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
+    { "64",  SR_UINT8_T, "network.%s.ip6addr",
+      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
 
 
 };
@@ -302,9 +302,13 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *v
   if (false == val_has_data(value->type)) {
     return SR_ERR_OK;
   }
+
  
   for (int i = 0; i < n_mappings; i++) {
-     rc = config_xpath_to_ucipath(pctx, sess, &table_sr_uci[i], value);
+      INF("===\n\t%s\n\t%s\n===", sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath));
+      if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
+          rc = config_xpath_to_ucipath(pctx, sess, &table_sr_uci[i], value);
+      }
   }
 
   /* exit: */
@@ -353,7 +357,7 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
             INF("%s\t%d: %s", ucipath, rc, uci_val);
             if (UCI_OK != rc) {
                 free(uci_val);
-                uci_val = table_sr_uci[i].default_value;
+                uci_val = strdup(table_sr_uci[i].default_value);
                 INF("Using default %s", uci_val);
                 if (!strcmp("", uci_val)) {
                     INF("No default %s", "continue!");
@@ -368,7 +372,9 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
                              xpath,
                              uci_val,
                              SR_EDIT_DEFAULT);
-        SR_CHECK_RET(rc, error, "Couldn't add interface %s with value: %s\t%s", xpath, uci_val, sr_strerror(rc));
+        INF("WARNING: Couldn't add interface %s with value: %s\t%s", xpath, uci_val, sr_strerror(rc));
+        rc = SR_ERR_OK;
+        /* SR_CHECK_RET(rc, error, "Couldn't add interface %s with value: %s\t%s", xpath, uci_val, sr_strerror(rc)); */
 
         INF("[%d] Added value %s = %s", rc, xpath, uci_val);
         free(uci_val);
