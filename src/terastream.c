@@ -50,13 +50,6 @@ static adiag_node_func_m table_operational[] = {
   { "cpu-usage", adiag_cpu_usage },
 };
 
-/* Mappings of operational data nodes for provisioning functions to functions. */
-static const struct rpc_method table_prov[] = {
-  { "cpe-update", prov_cpe_update },
-  { "cpe-reboot", prov_cpe_reboot },
-  { "cpe-factory-reset", prov_factory_reset },
-};
-
 static adiag_node_func_m table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
   { "phys-address", network_operational_mac },
@@ -463,27 +456,6 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     return rc;
 }
 
-static int
-init_provisioning_cb(sr_session_ctx_t *session, sr_subscription_ctx_t *subscription)
-{
-    char path[MAX_XPATH];
-    const int n_mappings = ARR_SIZE(table_prov);
-    int rc = SR_ERR_OK;
-    INF_MSG("Provisioning callbacks rpcs...");
-
-    for (int i = 0; i < n_mappings; i++) {
-        snprintf(path, MAX_XPATH, "/provisioning:%s", table_prov[i].name);
-        INF("Subscribing rpc %s", path);
-        rc = sr_rpc_subscribe(session, path, table_prov[i].method, NULL,
-                              SR_SUBSCR_CTX_REUSE, &subscription);
-        SR_CHECK_RET(rc, exit, "initialization of rpc handler: %s failed with: %s",
-                     table_prov[i].name, sr_strerror(rc));
-    }
-
-  exit:
-    return rc;
-}
-
 int
 sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
@@ -519,10 +491,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
-    /* RPC handlers. */
-    rc = init_provisioning_cb(session, subscription);
-    SR_CHECK_RET(rc, error, "init_rpc_cb %s", sr_strerror(rc));
-
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &subscription);
@@ -533,6 +501,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
 
     return SR_ERR_OK;
 

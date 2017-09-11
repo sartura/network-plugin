@@ -19,13 +19,6 @@ module provisioning {
     }
 
 
-    container "firmware" {
-
-       leaf "path" {
-           type "string";
-       }
-    }
-
    container "hgw-diagnostics" {
       config false;
 
@@ -43,20 +36,5 @@ module provisioning {
        leaf "cpu-usage" {
             type "uint32";
        }
-    }
-
-    rpc cpe-update {
-        description
-            "CPE firmware update (with keeping existing configuration)";
-    }
-
-    rpc cpe-reboot {
-        description
-            "Reset the device.";
-    }
-
-    rpc cpe-factory-reset {
-        description
-            "Flash firmware to factory version.";
     }
 }
