@@ -17,7 +17,6 @@ const char *YANG_MODEL = "ietf-interfaces";
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
     char *default_value;
-    sr_type_t default_value_type;
     char *ucipath;
     char *xpath;
 } sr_uci_link;
@@ -26,17 +25,15 @@ typedef struct sr_uci_mapping {
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
-    { "1500", SR_UINT16_T, "network.%s.mtu",
+    { "1500", "network.%s.mtu",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu" },
-    { "1500", SR_UINT16_T, "network.%s.mtu",
+    { "1500", "network.%s.mtu",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
 
-    { "24",  SR_UINT8_T, "network.%s.ipaddr",
+    { "24", "network.%s.ipaddr",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
-    { "64",  SR_UINT8_T, "network.%s.ip6addr",
+    { "64", "network.%s.ip6addr",
       "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
-
-
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
@@ -223,7 +220,7 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
 
     sprintf(xpath, mapping->xpath, device_name);
 
-    val_str = SR_ERR_NOT_FOUND == rc ? mapping->default_value : sr_val_to_str(value);
+    val_str = SR_ERR_NOT_FOUND == rc ? strdup(mapping->default_value) : sr_val_to_str(value);
     if (NULL == val_str) {
         goto exit;
     }
@@ -231,6 +228,8 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
     sprintf(ucipath, mapping->ucipath, device_name);
     rc = set_uci_item(pctx->uctx, ucipath, val_str);
     UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+
+    free(val_str);
 
   exit:
     return rc;
@@ -246,7 +245,6 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *v
     return SR_ERR_OK;
   }
 
- 
   for (int i = 0; i < n_mappings; i++) {
       INF("===\n\t%s\n\t%s\n===", sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath));
       if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
@@ -286,7 +284,6 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
             /* get ip */
             snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
             rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
-            /* INF("%s\t%d: %s", ucipath, rc, uci_val); */
             if (UCI_ERR_NOTFOUND == rc) {
                 rc = SR_ERR_OK;
                 continue;
@@ -299,7 +296,6 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
             rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
             INF("%s\t%d: %s", ucipath, rc, uci_val);
             if (UCI_OK != rc) {
-                free(uci_val);
                 uci_val = strdup(table_sr_uci[i].default_value);
                 INF("Using default %s", uci_val);
                 if (!strcmp("", uci_val)) {
@@ -362,6 +358,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
 {
     struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
 
+    /* Cover other events: ABORT */
     if (SR_EV_APPLY == event) {
         INF("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: %s ==========\n\n", module_name);
         /* print_current_config(session, module_name); */
@@ -408,10 +405,11 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     adiag_func func;
     struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
     (void) pctx;
-    int n_mappings = ARR_SIZE(table_operational);
+    int n_mappings;
     int rc = SR_ERR_OK;
 
     if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
+        n_mappings = ARR_SIZE(table_operational);
         INF("Diagnostics for %s %d", cb_xpath, n_mappings);
 
         *values_cnt = n_mappings;
@@ -429,21 +427,23 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     }
 
-    n_mappings = ARR_SIZE(table_interface_status);
     if (sr_xpath_node_name_eq(cb_xpath, "interface")) {
-      INF("Diagnostics for %s %d", cb_xpath, n_mappings);
+        n_mappings = ARR_SIZE(table_interface_status);
+        network_operational_start();
+        INF("Diagnostics for %s %d", cb_xpath, n_mappings);
 
-      *values_cnt = n_mappings;
-      rc = sr_new_values(*values_cnt, values);
-      SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
+        *values_cnt = n_mappings;
+        rc = sr_new_values(*values_cnt, values);
+        SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
 
-      for (size_t i = 0; i < *values_cnt; i++) {
-          node = table_interface_status[i].node;
-          func = table_interface_status[i].op_func;
-          INF("\tDiagnostics for: %s", node);
+        for (size_t i = 0; i < *values_cnt; i++) {
+            node = table_interface_status[i].node;
+            func = table_interface_status[i].op_func;
+            INF("\tDiagnostics for: %s", node);
 
-          rc = func(&(*values)[i]);
-      }
+            rc = func(&(*values)[i]);
+        }
+        network_operational_stop();
     }
 
     INF_MSG("Debug sysrepo values printout:");
@@ -474,6 +474,15 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     *private_ctx = ctx;
 
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
+                                    0, SR_SUBSCR_DEFAULT, &subscription);
+    SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
+
+    /* Init type for interface... */
+    rc = init_interfaces(ctx, session);
+    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+
     /* Operational data handling. */
     INF_MSG("Subscribing to diagnostics");
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
@@ -489,15 +498,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
-
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
-                                    0, SR_SUBSCR_DEFAULT, &subscription);
-    SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
-
-    /* Init type for interface... */
-    rc = init_interfaces(ctx, session);
-    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
