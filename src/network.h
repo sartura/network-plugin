@@ -9,6 +9,9 @@
 
 typedef void (*ubus_val_to_sr_val)(json_object *, sr_val_t *);
 
+int network_operational_start();
+void network_operational_stop();
+
 int network_operational_operstatus(sr_val_t *);
 int network_operational_mac(sr_val_t *);
 int network_operational_rx(sr_val_t *);

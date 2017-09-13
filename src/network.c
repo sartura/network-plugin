@@ -8,6 +8,26 @@ struct status_container {
     ubus_val_to_sr_val transform;
 };
 
+struct ubus_context *ctx;
+
+int
+network_operational_start()
+{
+    struct ubus_context *ctx = ubus_connect(NULL);
+    if (ctx == NULL) {
+        INF_MSG("Cant allocate ubus\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+void
+network_operational_stop()
+{
+    ubus_free(ctx);
+}
+
 static void
 make_status_container(struct status_container **context,
                       const char *ubus_method_to_call,
@@ -56,12 +76,11 @@ ubus_base(const char *ubus_lookup_path,
     struct blob_buf buf = {0,};
     int rc = SR_ERR_OK;
 
-
-    struct ubus_context *ctx = ubus_connect(NULL);
-    if (ctx == NULL) {
-        fprintf(stderr, "Cant allocate ubus\n");
-        goto exit;
-    }
+    /* struct ubus_context *ctx = ubus_connect(NULL); */
+    /* if (ctx == NULL) { */
+    /*     fprintf(stderr, "Cant allocate ubus\n"); */
+    /*     goto exit; */
+    /* } */
 
     blob_buf_init(&buf, 0);
 
