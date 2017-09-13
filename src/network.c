@@ -13,7 +13,8 @@ struct ubus_context *ctx;
 int
 network_operational_start()
 {
-    struct ubus_context *ctx = ubus_connect(NULL);
+  INF_MSG("Connect ubus context.");
+    ctx = ubus_connect(NULL);
     if (ctx == NULL) {
         INF_MSG("Cant allocate ubus\n");
         return -1;
@@ -25,7 +26,8 @@ network_operational_start()
 void
 network_operational_stop()
 {
-    ubus_free(ctx);
+  INF_MSG("Free ubus context.");
+     ubus_free(ctx);
 }
 
 static void
@@ -76,20 +78,14 @@ ubus_base(const char *ubus_lookup_path,
     struct blob_buf buf = {0,};
     int rc = SR_ERR_OK;
 
-    /* struct ubus_context *ctx = ubus_connect(NULL); */
-    /* if (ctx == NULL) { */
-    /*     fprintf(stderr, "Cant allocate ubus\n"); */
-    /*     goto exit; */
-    /* } */
-
     blob_buf_init(&buf, 0);
 
     rc = ubus_lookup_id(ctx, ubus_lookup_path, &id);
-
     if (rc) {
         INF("ubus [%d]: no object %s\n", rc, ubus_lookup_path);
         goto exit;
     }
+
     rc = ubus_invoke(ctx, id, msg->ubus_method, buf.head, ubus_base_cb, (void *) msg, 1000);
     if (rc) {
         INF("ubus [%d]: no object %s\n", rc, msg->ubus_method);
@@ -108,6 +104,7 @@ operstatus_transform(json_object *base, sr_val_t *value)
 {
     struct json_object *t;
     const char *ubus_result;
+
     json_object_object_get_ex(base,
                               "up",
                               &t);
