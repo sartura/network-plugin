@@ -479,10 +479,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                     0, SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
-    /* Init type for interface... */
-    rc = init_interfaces(ctx, session);
-    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
-
     /* Operational data handling. */
     INF_MSG("Subscribing to diagnostics");
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
@@ -498,6 +494,10 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
+
+    /* Init type for interface... */
+    rc = init_interfaces(ctx, session);
+    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
