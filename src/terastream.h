@@ -14,6 +14,8 @@
 struct plugin_ctx {
   struct uci_context *uctx;
   sr_subscription_ctx_t *subscription;
+  sr_conn_ctx_t *startup_connection;
+  sr_session_ctx_t *startup_session;
 };
 
 /* /\* Update UCI configuration from Sysrepo datastore. *\/ */

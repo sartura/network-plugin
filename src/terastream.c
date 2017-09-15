@@ -46,13 +46,13 @@ static adiag_node_func_m table_operational[] = {
   { "cpu-usage", adiag_cpu_usage },
 };
 
-static adiag_node_func_m table_interface_status[] = {
+static oper_mapping table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
   { "phys-address", network_operational_mac },
   { "out-octets", network_operational_rx },
   { "in-octets", network_operational_tx },
   { "mtu", network_operational_mtu },
-  { "ip", network_operational_ip },
+  /* { "ip", network_operational_ip }, */
   /* { "neighbor", network_operational_neigh }, */
 };
 
@@ -398,20 +398,85 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     return SR_ERR_OK;
 }
 
+static size_t
+list_size(struct list_head *list)
+{
+    size_t current_size = 0;
+    struct value_node *vn;
+
+    list_for_each_entry(vn, list, head) {
+        current_size += 1;
+        INF("%lu", current_size);
+        sr_print_val(vn->value);
+    }
+
+    return current_size;
+}
+
+int
+sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
+{
+    int rc = SR_ERR_OK;
+
+    switch (source->type) {
+        case SR_BINARY_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
+            break;
+        case SR_BITS_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
+            break;
+        case SR_ENUM_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
+            break;
+        case SR_IDENTITYREF_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
+            break;
+        case SR_INSTANCEID_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
+            break;
+        case SR_STRING_T:
+            rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
+            break;
+        case SR_BOOL_T:
+        case SR_DECIMAL64_T:
+        case SR_INT8_T:
+        case SR_INT16_T:
+        case SR_INT32_T:
+        case SR_INT64_T:
+        case SR_UINT8_T:
+        case SR_UINT16_T:
+        case SR_UINT32_T:
+        case SR_UINT64_T:
+        case SR_TREE_ITERATOR_T:
+            dest->data = source->data;
+            dest->type = source->type;
+            break;
+        default:
+            dest->type = source->type;
+            break;
+    }
+
+    sr_val_set_xpath(dest, source->xpath);
+    return rc;
+}
+
+
 static int
 data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     char *node;
-    adiag_func func;
     struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
     (void) pctx;
-    int n_mappings;
+    size_t n_mappings;
     int rc = SR_ERR_OK;
+
+    INF("%s", cb_xpath);
 
     if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
         n_mappings = ARR_SIZE(table_operational);
         INF("Diagnostics for %s %d", cb_xpath, n_mappings);
 
+        adiag_func func;
         *values_cnt = n_mappings;
         rc = sr_new_values(*values_cnt, values);
         SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
@@ -427,27 +492,52 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     }
 
+    struct list_head list = LIST_HEAD_INIT(list);
     if (sr_xpath_node_name_eq(cb_xpath, "interface")) {
-        n_mappings = ARR_SIZE(table_interface_status);
         network_operational_start();
-        INF("Diagnostics for %s %d", cb_xpath, n_mappings);
+        oper_func func;
+        n_mappings = ARR_SIZE(table_interface_status);
 
-        *values_cnt = n_mappings;
-        rc = sr_new_values(*values_cnt, values);
-        SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
 
-        for (size_t i = 0; i < *values_cnt; i++) {
+        for (size_t i = 0; i < n_mappings; i++) {
             node = table_interface_status[i].node;
             func = table_interface_status[i].op_func;
             INF("\tDiagnostics for: %s", node);
-
-            rc = func(&(*values)[i]);
+            rc = func(&(*values)[i], &list);
         }
+
+        size_t cnt = 0;
+        cnt = list_size(&list);
+
+        struct value_node *vn;
+        size_t j = 0;
+        rc = sr_new_values(cnt, values);
+        INF("list values %d count:%lu", rc, cnt);
+
+        list_for_each_entry(vn, &list, head) {
+            INF_MSG("");
+            /* sscanf("100", "%" PRIu64, &vn->value->data.uint64_val); */
+            sr_print_val(vn->value);
+            sr_dup_val_data(&(*values)[j], vn->value);
+            INF("dup %d j:%lu", rc, j);
+
+            j += 1;
+        }
+        /* INF("list values %d count:%lu", rc, cnt); */
+
+        /* for (size_t i = 0; i < cnt; i++) { */
+        /*     INF("bla: %s", bla[i]); */
+        /* } */
+
         network_operational_stop();
+
+        *values_cnt = cnt;
+
     }
 
-    INF_MSG("Debug sysrepo values printout:");
+    INF("Debug sysrepo values printout: %lu", *values_cnt);
     for (size_t i = 0; i < *values_cnt; i++){
+        /* INF("%lu", i); */
         sr_print_val(&(*values)[i]);
     }
 
@@ -472,7 +562,19 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
         goto error;
     }
 
+    INF_MSG("Connecting to sysrepo ...");
+    rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &ctx->startup_connection);
+    SR_CHECK_RET(rc, error, "Error by sr_connect: %s", sr_strerror(rc));
+
+
+    rc = sr_session_start(ctx->startup_connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->startup_session);
+    SR_CHECK_RET(rc, error, "Error by sr_session_start: %s", sr_strerror(rc));
+
     *private_ctx = ctx;
+
+    /* Init type for interface... */
+    rc = init_interfaces(ctx, ctx->startup_session);
+    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
@@ -494,10 +596,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
-
-    /* Init type for interface... */
-    rc = init_interfaces(ctx, session);
-    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
