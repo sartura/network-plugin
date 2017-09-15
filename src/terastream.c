@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include <libubus.h>
 #include <libubox/blobmsg.h>
@@ -357,10 +358,12 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
+    int rc = SR_ERR_OK;
 
     /* Cover other events: ABORT */
     if (SR_EV_APPLY == event) {
         INF("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: %s ==========\n\n", module_name);
+        rc = sr_copy_config(pctx->startup_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
         /* print_current_config(session, module_name); */
     } else {
         INF("Some insignificant event %d", event);
@@ -368,7 +371,6 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     }
 
     sr_change_iter_t *it = NULL;
-    int rc = SR_ERR_OK;
     sr_change_oper_t oper;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
@@ -394,8 +396,17 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     }
     INF_MSG("\n\n ========== END OF CHANGES =======================================\n\n");
 
+    pid_t pid=fork();
+    if (pid==0) {
+        execl("/etc/init.d/network", "network", "restart", (char *) NULL);
+        exit(127);
+    } else {
+        waitpid(pid, 0, 0);
+    }
 
-    return SR_ERR_OK;
+
+
+    return rc;
 }
 
 static size_t
