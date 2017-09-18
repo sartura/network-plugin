@@ -510,6 +510,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
             func = table_interface_status[i].op_func;
             INF("\tDiagnostics for: %s", node);
             rc = func(&(*values)[i], &list);
+            INF("%s", sr_strerror((rc)));
         }
 
         size_t cnt = 0;
@@ -536,8 +537,9 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     INF("Debug sysrepo values printout: %zu", *values_cnt);
     for (size_t i = 0; i < *values_cnt; i++){
-        /* sr_print_val(&(*values)[i]); */
+        sr_print_val(&(*values)[i]);
     }
+
 
   exit:
     return rc;

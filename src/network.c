@@ -6,7 +6,7 @@ struct status_container {
     sr_val_t *value;
     const char *ubus_method;
     ubus_val_to_sr_val transform;
-  struct list_head *list;
+    struct list_head *list;
 };
 
 struct ubus_context *ctx;
@@ -31,8 +31,8 @@ network_operational_start()
 void
 network_operational_stop()
 {
-  /* INF_MSG("Free ubus context."); */
-  /*    ubus_free(ctx); */
+    /* INF_MSG("Free ubus context."); */
+    /*    ubus_free(ctx); */
     /* free(container_msg); */
 }
 
@@ -83,9 +83,9 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 
 static int
 ubus_base(const char *ubus_lookup_path,
-            struct status_container *msg)
+          struct status_container *msg)
 {
-  INF("list null %d", msg->list==NULL);
+    INF("list null %d", msg->list==NULL);
     uint32_t id = 0;
     int rc = SR_ERR_OK;
 
@@ -115,7 +115,7 @@ ubus_base(const char *ubus_lookup_path,
 static void
 operstatus_transform(json_object *base, sr_val_t *value, struct list_head *list)
 {
-  INF("list null %d", list==NULL);
+    INF("list null %d", list==NULL);
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -192,12 +192,6 @@ network_operational_mac(sr_val_t *val, struct list_head *list)
 
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", mac_transform, val, list);
-    /* msg = calloc(1, sizeof *msg); */
-    /* msg->value = val; */
-    /* msg->transform = mac_transform; */
-    /* msg->ubus_method = "status"; */
-
-
     ubus_base("network.device", msg);
 
     return SR_ERR_OK;
@@ -346,7 +340,9 @@ ip_transform(json_object *base, sr_val_t *value, struct list_head *list)
         }
     }
 
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
+    const char *fmt =
+        "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
+
     char xpath[MAX_XPATH];
     sprintf(xpath, fmt, ip);
     struct value_node *list_value;
@@ -379,7 +375,8 @@ neigh_transform(json_object *base, sr_val_t *value, struct list_head *list)
     const char *ubus_result;
     char xpath[MAX_XPATH];
     const char *fmt =
-        "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/neighbor[ip='%s]/link-layer-address";
+        "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
+
     INF("%s", json_object_to_json_string(base));
 
     json_object_object_get_ex(base, "table", &table);
@@ -387,7 +384,7 @@ neigh_transform(json_object *base, sr_val_t *value, struct list_head *list)
     INF("---TABLE:\n%s", ubus_result);
 
     /* Get ip and mask (prefix length) from address. */
-    enum json_type type;
+    // enum json_type type;
     const int N =  	json_object_array_length(table);
     INF("table has %d entries.", N);
     struct value_node *list_value;
@@ -406,15 +403,13 @@ neigh_transform(json_object *base, sr_val_t *value, struct list_head *list)
         INF("\t\t%s", ip);
         INF("\t\t%s", mac);
 
-        sprintf(xpath, fmt, ip);
+        sprintf(xpath, fmt, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
-        INF_MSG("");
-        sr_val_set_xpath(list_value->value, xpath);
-        sr_val_set_str_data(list_value->value, SR_STRING_T, strdup(mac));
+        sr_val_set_xpath(list_value->value, strdup(xpath));
+        sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(mac));
         sr_print_val(list_value->value);
-        /* (&value[i])->type = SR_STRING_T; */
-        /* (&value[i])->data.string_val = strdup(mac); */
+
         list_add(&list_value->head, list);
 
     }
@@ -424,7 +419,6 @@ int
 network_operational_neigh(sr_val_t *val, struct list_head *list)
 {
     /* Sets the value in ubus callback. */
-
     struct status_container *msg;
     make_status_container(&msg, "arp", neigh_transform, val, list);
     ubus_base("router.net", msg);
