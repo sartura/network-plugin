@@ -6,6 +6,8 @@
 #include <sysrepo.h>
 #include <sysrepo/values.h>
 
+#define MAX_XPATH 256
+
 struct value_node {
   struct list_head head;
   sr_val_t *value;
@@ -30,9 +32,5 @@ int network_operational_mac(sr_val_t *, struct list_head *);
 int network_operational_rx(sr_val_t *, struct list_head *);
 int network_operational_tx(sr_val_t *, struct list_head *);
 int network_operational_mtu(sr_val_t *, struct list_head *);
-
-
-/* int network_operational_tx(sr_val_t *); */
-/* int network_operational_mtu(sr_val_t *); */
-/* int network_operational_ip(sr_val_t *); */
-/* int network_operational_neigh(sr_val_t *val); */
+int network_operational_ip(sr_val_t *, struct list_head *);
+int network_operational_neigh(sr_val_t *val, struct list_head *);

@@ -38,6 +38,7 @@ static sr_uci_link table_sr_uci[] =
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
+static const char *default_interface_type = "iana-if-type:ethernetCsmacd";
 
 /* Mappings of operational nodes to corresponding handler functions. */
 /* Functions must not need the plugin context. */
@@ -53,12 +54,12 @@ static oper_mapping table_interface_status[] = {
   { "out-octets", network_operational_rx },
   { "in-octets", network_operational_tx },
   { "mtu", network_operational_mtu },
-  /* { "ip", network_operational_ip }, */
-  /* { "neighbor", network_operational_neigh }, */
+  { "ip", network_operational_ip },
+  { "neighbor", network_operational_neigh },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
-static int config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *value);
+static int config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value);
 
 /* Update UCI configuration given ucipath and some string value. */
 static int set_uci_item(struct uci_context *uctx, char *ucipath, char *value);
@@ -91,44 +92,44 @@ val_has_data(sr_type_t type) {
 }
 
 
-static char *
-get_key_value_second(char *orig_xpath)
-{
-  char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL;
-    sr_xpath_ctx_t state = {0,0,0,0};
+/* static char * */
+/* get_key_value_second(char *orig_xpath) */
+/* { */
+/*   char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL; */
+/*     sr_xpath_ctx_t state = {0,0,0,0}; */
 
-    xpath = strdup(orig_xpath);
+/*     xpath = strdup(orig_xpath); */
 
-    char *cur = strstr(xpath, "ssid");
-    if (!cur) {
-      return NULL;
-    }
+/*     char *cur = strstr(xpath, "ssid"); */
+/*     if (!cur) { */
+/*       return NULL; */
+/*     } */
 
-    node = sr_xpath_next_node(xpath, &state);
-    if (NULL == node) {
-      goto error;
-    }
-    int counter = 0;
-    while(true) {
-      key = sr_xpath_next_key_name(NULL, &state);
-      if (NULL != key) {
-        val = sr_xpath_next_key_value(NULL, &state);
-        if (++counter == 2) break;
-        /* break; */
-      }
-      node = sr_xpath_next_node(NULL, &state);
-      if (NULL == node) {
-        break;
-      }
-    }
+/*     node = sr_xpath_next_node(xpath, &state); */
+/*     if (NULL == node) { */
+/*       goto error; */
+/*     } */
+/*     int counter = 0; */
+/*     while(true) { */
+/*       key = sr_xpath_next_key_name(NULL, &state); */
+/*       if (NULL != key) { */
+/*         val = sr_xpath_next_key_value(NULL, &state); */
+/*         if (++counter == 2) break; */
+/*         /\* break; *\/ */
+/*       } */
+/*       node = sr_xpath_next_node(NULL, &state); */
+/*       if (NULL == node) { */
+/*         break; */
+/*       } */
+/*     } */
 
 
-  error:
-    if (NULL != xpath) {
-        free(xpath);
-    }
-    return key ? strdup(val) : NULL;
-}
+/*   error: */
+/*     if (NULL != xpath) { */
+/*         free(xpath); */
+/*     } */
+/*     return key ? strdup(val) : NULL; */
+/* } */
 
 static char *
 get_key_value(char *orig_xpath)
@@ -211,7 +212,7 @@ exit:
 }
 
 static int
-config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_link *mapping, sr_val_t *value)
+config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t *value)
 {
     char *val_str;
     char ucipath[MAX_UCI_PATH] ;
@@ -221,9 +222,9 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
 
     sprintf(xpath, mapping->xpath, device_name);
 
-    val_str = SR_ERR_NOT_FOUND == rc ? strdup(mapping->default_value) : sr_val_to_str(value);
+    val_str = sr_val_to_str(value);
     if (NULL == val_str) {
-        goto exit;
+        val_str = strdup(mapping->default_value);
     }
 
     sprintf(ucipath, mapping->ucipath, device_name);
@@ -237,30 +238,28 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_uci_
 }
 
 static int
-config_store_to_uci(struct plugin_ctx *pctx, sr_session_ctx_t *sess, sr_val_t *value)
+config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value)
 {
-  const int n_mappings = ARR_SIZE(table_sr_uci);
-  int rc = SR_ERR_OK;
+    const int n_mappings = ARR_SIZE(table_sr_uci);
+    int rc = SR_ERR_OK;
 
-  if (false == val_has_data(value->type)) {
-    return SR_ERR_OK;
-  }
-
-  for (int i = 0; i < n_mappings; i++) {
-      INF("===\n\t%s\n\t%s\n===", sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath));
-      if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
-          rc = config_xpath_to_ucipath(pctx, sess, &table_sr_uci[i], value);
-      }
-  }
-
-  /* exit: */
-    if (SR_ERR_NOT_FOUND == rc) {
-        rc = SR_ERR_OK;
+    if (false == val_has_data(value->type)) {
+        return SR_ERR_OK;
     }
 
-    return rc;
+    for (int i = 0; i < n_mappings; i++) {
+        if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
+            rc = config_xpath_to_ucipath(pctx, &table_sr_uci[i], value);
+            INF("Failed to map xpath to ucipath: %s", sr_strerror(rc));
+        }
+    }
+
+    return SR_ERR_OK;
 }
 
+/* Given name of the UCI interface, fill 'ietf-interfaces' interface.
+ * Default mandatory type is also added first.
+*/
 static int
 add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
 {
@@ -273,18 +272,20 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
     sprintf(xpath, xpath_network_type_format, name);
     rc = sr_set_item_str(session,
                          xpath,
-                         "iana-if-type:ethernetCsmacd",
+                         default_interface_type,
                          SR_EDIT_DEFAULT);
     SR_CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
 
     for (size_t i = 0; i < n_mappings; i++) {
 
-        char *uci_val = calloc(1, 100);
+        char *uci_val = calloc(1, MAX_UCI_PATH);
 
+        /* get ip */
+        snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
+        rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
+
+        /* Find interface name and ip. */
         if (strstr(table_sr_uci[i].xpath, "address")) {
-            /* get ip */
-            snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
-            rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
             if (UCI_ERR_NOTFOUND == rc) {
                 rc = SR_ERR_OK;
                 continue;
@@ -292,11 +293,9 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
 
             sprintf(xpath, table_sr_uci[i].xpath, name, uci_val);
             uci_val = strdup(table_sr_uci[i].default_value);
-        } else {
-            snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
-            rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
-            INF("%s\t%d: %s", ucipath, rc, uci_val);
-            if (UCI_OK != rc) {
+
+        } else {                /* Only need ip. */
+           if (UCI_OK != rc) {
                 uci_val = strdup(table_sr_uci[i].default_value);
                 INF("Using default %s", uci_val);
                 if (!strcmp("", uci_val)) {
@@ -312,11 +311,9 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
                              xpath,
                              uci_val,
                              SR_EDIT_DEFAULT);
-        INF("WARNING: Couldn't add interface %s with value: %s\t%s", xpath, uci_val, sr_strerror(rc));
+        INF("%s: %s\t:%s", sr_strerror(rc), xpath, uci_val);
         rc = SR_ERR_OK;
-        /* SR_CHECK_RET(rc, error, "Couldn't add interface %s with value: %s\t%s", xpath, uci_val, sr_strerror(rc)); */
 
-        INF("[%d] Added value %s = %s", rc, xpath, uci_val);
         free(uci_val);
     }
 
@@ -324,6 +321,7 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
     return rc;
 }
 
+/* Read current UCI network configuration into sysrepo datastore. */
 static int
 init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
 {
@@ -345,7 +343,6 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
         }
     }
 
-    INF("Got out of addinterface %d", rc);
     rc = sr_commit(session);
     SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
@@ -387,7 +384,7 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     while (SR_ERR_OK == (rc = sr_get_change_next(session, it,
                 &oper, &old_value, &new_value))) {
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
-            rc = config_store_to_uci(pctx, session, new_value);
+            rc = config_store_to_uci(pctx, new_value);
             sr_print_val(new_value);
         }
 
@@ -417,8 +414,6 @@ list_size(struct list_head *list)
 
     list_for_each_entry(vn, list, head) {
         current_size += 1;
-        INF("%lu", current_size);
-        sr_print_val(vn->value);
     }
 
     return current_size;
@@ -485,7 +480,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
         n_mappings = ARR_SIZE(table_operational);
-        INF("Diagnostics for %s %d", cb_xpath, n_mappings);
+        INF("Diagnostics for %s %zu", cb_xpath, n_mappings);
 
         adiag_func func;
         *values_cnt = n_mappings;
@@ -519,26 +514,19 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
         size_t cnt = 0;
         cnt = list_size(&list);
+        INF("Allocating %zu values.", cnt);
 
         struct value_node *vn;
         size_t j = 0;
         rc = sr_new_values(cnt, values);
-        INF("list values %d count:%lu", rc, cnt);
+        INF("%s", sr_strerror(rc));
 
         list_for_each_entry(vn, &list, head) {
-            INF_MSG("");
-            /* sscanf("100", "%" PRIu64, &vn->value->data.uint64_val); */
-            sr_print_val(vn->value);
-            sr_dup_val_data(&(*values)[j], vn->value);
-            INF("dup %d j:%lu", rc, j);
-
+            /* sr_print_val(vn->value); */
+            rc = sr_dup_val_data(&(*values)[j], vn->value);
+            INF("%zu: %s", j, sr_strerror(rc));
             j += 1;
         }
-        /* INF("list values %d count:%lu", rc, cnt); */
-
-        /* for (size_t i = 0; i < cnt; i++) { */
-        /*     INF("bla: %s", bla[i]); */
-        /* } */
 
         network_operational_stop();
 
@@ -546,10 +534,9 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     }
 
-    INF("Debug sysrepo values printout: %lu", *values_cnt);
+    INF("Debug sysrepo values printout: %zu", *values_cnt);
     for (size_t i = 0; i < *values_cnt; i++){
-        /* INF("%lu", i); */
-        sr_print_val(&(*values)[i]);
+        /* sr_print_val(&(*values)[i]); */
     }
 
   exit:
@@ -586,6 +573,9 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     /* Init type for interface... */
     rc = init_interfaces(ctx, ctx->startup_session);
     SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+
+    /* rc = sr_copy_config(ctx->startup_session, YANG_MODEL, SR_DS_STARTUP, SR_DS_RUNNING); */
+    /* INF("%s", sr_strerror(rc)); */
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
