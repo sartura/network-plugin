@@ -53,10 +53,10 @@ static oper_mapping table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
   { "phys-address", network_operational_mac },
   { "out-octets", network_operational_rx },
-  /* { "in-octets", network_operational_tx }, */
-  /* { "mtu", network_operational_mtu }, */
-  /* { "ip", network_operational_ip }, */
-  /* { "neighbor", network_operational_neigh }, */
+  { "in-octets", network_operational_tx },
+  { "mtu", network_operational_mtu },
+  { "ip", network_operational_ip },
+  { "neighbor", network_operational_neigh },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
@@ -322,6 +322,29 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
     return rc;
 }
 
+static int
+get_uci_interfaces(struct plugin_ctx *pctx)
+{
+    struct uci_element *e;
+    struct uci_section *s;
+    struct uci_package *package = NULL;
+    int rc;
+
+    rc = uci_load(pctx->uctx, "network", &package);
+
+    uci_foreach_element(&package->sections, e) {
+        s = uci_to_section(e);
+        char *type = s->type;
+        char *name = s->e.name;
+
+        if (strcmp("interface", type) == 0) {
+            strcpy(pctx->interface_names[pctx->interface_count++], name);
+        }
+    }
+
+    return rc;
+}
+
 /* Read current UCI network configuration into sysrepo datastore. */
 static int
 init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
@@ -341,8 +364,6 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
         if (strcmp("interface", type) == 0) {
             rc = add_interface(pctx, session, name);
             SR_CHECK_RET(rc, exit, "Couldn't add interface %s: %s", name, sr_strerror(rc));
-
-            strcpy(pctx->interface_names[pctx->interface_count++], name);
         }
     }
 
@@ -530,28 +551,31 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         list_for_each_entry(vn, &list, head) {
             /* sr_print_val(vn->value); */
             rc = sr_dup_val_data(&(*values)[j], vn->value);
-            INF("%zu: %s", j, sr_strerror(rc));
+            /* INF("%zu: %s", j, sr_strerror(rc)); */
             j += 1;
+            sr_free_val(vn->value);
         }
 
-        network_operational_stop();
 
         *values_cnt = cnt;
 
+        list_del(&list);
     }
 
-    INF("Debug sysrepo values printout: %zu", *values_cnt);
-    for (size_t i = 0; i < *values_cnt; i++){
-        sr_print_val(&(*values)[i]);
+    if (*values_cnt > 0) {
+        INF("Debug sysrepo values printout: %zu", *values_cnt);
+        for (size_t i = 0; i < *values_cnt; i++){
+            sr_print_val(&(*values)[i]);
+        }
     }
-
 
   exit:
     return rc;
 }
 
 
-int sync_datastores(struct plugin_ctx *ctx)
+static int
+sync_datastores(struct plugin_ctx *ctx)
 {
     char startup_file[MAX_XPATH] = {0};
     int rc = SR_ERR_OK;
@@ -610,7 +634,10 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     /* Init type for interface... */
     rc = sync_datastores(ctx);
-    SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
+    SR_CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
+
+    rc= get_uci_interfaces(ctx);
+    SR_CHECK_RET(rc, error, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
 
     /* rc = sr_copy_config(ctx->startup_session, YANG_MODEL, SR_DS_STARTUP, SR_DS_RUNNING); */
     /* INF("%s", sr_strerror(rc)); */
@@ -659,6 +686,8 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 
     struct plugin_ctx *ctx = private_ctx;
     sr_unsubscribe(session, ctx->subscription);
+    network_operational_stop();
+
     free(ctx);
 
     SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");

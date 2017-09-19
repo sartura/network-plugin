@@ -15,8 +15,8 @@ struct status_container *container_msg;
 int
 network_operational_start()
 {
-    INF("Connect ubus context. %lu", (size_t) ctx);
     if (ctx) return 0;
+    INF("Connect ubus context. %zu", (size_t) ctx);
     container_msg = calloc(1,sizeof(*container_msg));
     
     ctx = ubus_connect(NULL);
@@ -31,9 +31,10 @@ network_operational_start()
 void
 network_operational_stop()
 {
-    /* INF_MSG("Free ubus context."); */
-    /*    ubus_free(ctx); */
-    /* free(container_msg); */
+    INF_MSG("Free ubus context.");
+    INF("%lu %lu", (long unsigned)ctx, (long unsigned) container_msg);
+    if (ctx) ubus_free(ctx);
+    if (container_msg) free(container_msg);
 }
 
 static void
@@ -42,14 +43,11 @@ make_status_container(struct status_container **context,
                       ubus_val_to_sr_val result_function,
                       char *interface_name, struct list_head *list)
 {
-    INF("%s", ubus_method_to_call);
-    /* *context = calloc(1, sizeof *context); */
     *context = container_msg;
     (*context)->interface_name = interface_name;
     (*context)->transform = result_function;
     (*context)->ubus_method = ubus_method_to_call;
     (*context)->list = list;
-    INF_MSG("");
 }
 
 static void
@@ -65,7 +63,7 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
     if (!msg) {
         return;
     }
-    INF("list null %d", status_container_msg->list==NULL);
+    /* INF("list null %d", status_container_msg->list==NULL); */
 
     json_string = blobmsg_format_json(msg, true);
     base_object = json_tokener_parse(json_string);
@@ -78,26 +76,25 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
     json_object_put(base_object);
     free(json_string);
     /* free(status_container_msg); */
-    INF_MSG("\n---END= \n---");
+    /* INF_MSG("\n---END= \n---"); */
 }
 
 static int
 ubus_base(const char *ubus_lookup_path,
           struct status_container *msg)
 {
-    INF("list null %d", msg->list==NULL);
+    /* INF("list null %d", msg->list==NULL); */
     uint32_t id = 0;
     int rc = SR_ERR_OK;
 
-    char ubuf[20];
+    char ubuf[100];
     sprintf(ubuf, ubus_lookup_path, msg->interface_name);
-    INF("ctx null %d %s\n\t%s", ctx==NULL, ubus_lookup_path, ubuf);
+    /* INF("ctx null %d %s\n\t%s", ctx==NULL, ubus_lookup_path, ubuf); */
     rc = ubus_lookup_id(ctx, ubuf, &id);
     if (rc) {
         INF("ubus [%d]: %s\n", rc, ubus_strerror(rc));
         goto exit;
     }
-    INF("list null %d", msg->list==NULL);
 
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -117,7 +114,6 @@ ubus_base(const char *ubus_lookup_path,
 static void
 operstatus_transform(json_object *base, char *interface_name, struct list_head *list)
 {
-    INF("list null %d", list==NULL);
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -143,7 +139,6 @@ operstatus_transform(json_object *base, char *interface_name, struct list_head *
 int
 network_operational_operstatus(char *interface_name, struct list_head *list)
 {
-    INF("list null %d", list==NULL);
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", operstatus_transform, interface_name, list);
     ubus_base("network.interface.%s", msg);
@@ -171,7 +166,7 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
                               "br-lan",
                               &t);
     ubus_result = json_object_to_json_string(t);
-    INF("%s", ubus_result);
+    /* INF("%s", ubus_result); */
 
     struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
@@ -182,7 +177,7 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
                               &t);
     ubus_result = json_object_to_json_string(t);
 
-    INF("mac %s", ubus_result);
+    /* INF("mac %s", ubus_result); */
     sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
 
     list_value->value->xpath = strdup("/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address");
@@ -192,9 +187,6 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
 int
 network_operational_mac(char *interface_name, struct list_head *list)
 {
-    /* Sets the value in ubus callback. */
-    /* sr_val_set_xpath(&val[0], "/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address"); */
-
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", mac_transform, interface_name, list);
     ubus_base("network.device", msg);
@@ -211,7 +203,7 @@ rx_transform(json_object *base, char *interface_name, struct list_head *list)
                               "br-lan",
                               &t);
     ubus_result = json_object_to_json_string(t);
-    INF("%s", ubus_result);
+    /* INF("%s", ubus_result); */
 
     json_object_object_get_ex(t, "statistics", &t);
     ubus_result = json_object_to_json_string(t);
@@ -255,7 +247,7 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
     json_object_object_get_ex(t, "tx_bytes", &t);
     ubus_result = json_object_to_json_string(t);
 
-    INF("%s", ubus_result);
+    /* INF("%s", ubus_result); */
     struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
@@ -288,7 +280,7 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
                               "eth0.1",
                               &t);
     ubus_result = json_object_to_json_string(t);
-    INF("%s", ubus_result);
+    /* INF("%s", ubus_result); */
 
     json_object_object_get_ex(t, "mtu", &t);
     ubus_result = json_object_to_json_string(t);
@@ -321,14 +313,14 @@ ip_transform(json_object *base, char *interface_name, struct list_head *list)
     const char *ip;
     uint8_t prefix_length = 0;
     struct json_object *t;
-    const char *ubus_result;
+    /* const char *ubus_result; */
 
     json_object_object_get_ex(base, "ipv4-address", &t);
     if (!t) {
         return;
     }
-    ubus_result = json_object_to_json_string(t);
-    INF("%s", ubus_result);
+    /* ubus_result = json_object_to_json_string(t); */
+    /* INF("%s", ubus_result); */
 
     t = json_object_array_get_idx(t, 0);
     if (!t) {
@@ -380,36 +372,36 @@ static void
 neigh_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *table, *iter_object;
-    const char *ubus_result;
+    /* const char *ubus_result; */
     char xpath[MAX_XPATH];
     const char *fmt =
         "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
 
-    INF("%s", json_object_to_json_string(base));
+    /* INF("%s", json_object_to_json_string(base)); */
 
     json_object_object_get_ex(base, "table", &table);
-    ubus_result = json_object_to_json_string(table);
-    INF("---TABLE:\n%s", ubus_result);
+    /* ubus_result = json_object_to_json_string(table); */
+    /* INF("---TABLE:\n%s", ubus_result); */
 
     /* Get ip and mask (prefix length) from address. */
     // enum json_type type;
     const int N =  	json_object_array_length(table);
-    INF("table has %d entries.", N);
+    /* INF("table has %d entries.", N); */
     struct value_node *list_value;
     for (int i = 0; i < N; i++) {
         json_object *ip_obj, *mac_obj;
         const char *ip, *mac;
 
         iter_object = json_object_array_get_idx(table, i);
-        INF("[%d]\n\t%s", i, json_object_to_json_string(iter_object));
+        /* INF("[%d]\n\t%s", i, json_object_to_json_string(iter_object)); */
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
         json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
 
         ip = json_object_to_json_string(ip_obj);
         mac = json_object_to_json_string(mac_obj);
-        INF("\t\t%s", ip);
-        INF("\t\t%s", mac);
+        /* INF("\t\t%s", ip); */
+        /* INF("\t\t%s", mac); */
 
         sprintf(xpath, fmt, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
