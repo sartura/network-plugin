@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 
 #include <libubus.h>
 #include <libubox/blobmsg.h>
@@ -52,10 +53,10 @@ static oper_mapping table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
   { "phys-address", network_operational_mac },
   { "out-octets", network_operational_rx },
-  { "in-octets", network_operational_tx },
-  { "mtu", network_operational_mtu },
-  { "ip", network_operational_ip },
-  { "neighbor", network_operational_neigh },
+  /* { "in-octets", network_operational_tx }, */
+  /* { "mtu", network_operational_mtu }, */
+  /* { "ip", network_operational_ip }, */
+  /* { "neighbor", network_operational_neigh }, */
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
@@ -340,6 +341,8 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
         if (strcmp("interface", type) == 0) {
             rc = add_interface(pctx, session, name);
             SR_CHECK_RET(rc, exit, "Couldn't add interface %s: %s", name, sr_strerror(rc));
+
+            strcpy(pctx->interface_names[pctx->interface_count++], name);
         }
     }
 
@@ -508,9 +511,11 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         for (size_t i = 0; i < n_mappings; i++) {
             node = table_interface_status[i].node;
             func = table_interface_status[i].op_func;
-            INF("\tDiagnostics for: %s", node);
-            rc = func(&(*values)[i], &list);
-            INF("%s", sr_strerror((rc)));
+            /* INF("\tDiagnostics for: %s", node); */
+            for (size_t j = 0; j < pctx->interface_count; j++) {
+              rc = func(pctx->interface_names[j], &list);
+              /* INF("%s", sr_strerror((rc))); */
+            }
         }
 
         size_t cnt = 0;
@@ -545,6 +550,37 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     return rc;
 }
 
+
+int sync_datastores(struct plugin_ctx *ctx)
+{
+    char startup_file[MAX_XPATH] = {0};
+    int rc = SR_ERR_OK;
+    struct stat st;
+
+    /* check if the startup datastore is empty
+     * by checking the content of the file */
+    snprintf(startup_file, MAX_XPATH, "/etc/sysrepo/data/%s.startup", YANG_MODEL);
+
+    if (stat(startup_file, &st) != 0) {
+        ERR("Could not open sysrepo file %s", startup_file);
+        return SR_ERR_INTERNAL;
+    }
+
+    if (0 == st.st_size) {
+        /* parse uci config */
+        rc = init_interfaces(ctx, ctx->startup_session);
+        INF_MSG("copy uci data to sysrepo");
+        SR_CHECK_RET(rc, error, "failed to apply uci data to sysrepo: %s", sr_strerror(rc));
+    } else {
+        /* copy the sysrepo startup datastore to uci */
+        INF_MSG("copy sysrepo data to uci");
+        SR_CHECK_RET(rc, error, "failed to apply sysrepo startup data to snabb: %s", sr_strerror(rc));
+    }
+
+  error:
+    return rc;
+}
+
 int
 sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
@@ -573,7 +609,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     *private_ctx = ctx;
 
     /* Init type for interface... */
-    rc = init_interfaces(ctx, ctx->startup_session);
+    rc = sync_datastores(ctx);
     SR_CHECK_RET(rc, error, "Couldn't initialize interfaces: %s", sr_strerror(rc));
 
     /* rc = sr_copy_config(ctx->startup_session, YANG_MODEL, SR_DS_STARTUP, SR_DS_RUNNING); */
@@ -601,6 +637,9 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
+    for (size_t i = 0; i < ctx->interface_count; i++) {
+      INF("[%zu/%zu] %s", i+1, ctx->interface_count, ctx->interface_names[i]);
+    }
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
 
     return SR_ERR_OK;

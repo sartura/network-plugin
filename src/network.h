@@ -13,9 +13,9 @@ struct value_node {
   sr_val_t *value;
 };
 
-typedef void (*ubus_val_to_sr_val)(json_object *, sr_val_t *, struct list_head *list);
+typedef void (*ubus_val_to_sr_val)(json_object *, char *, struct list_head *list);
 
-typedef int (*oper_func)(sr_val_t *, struct list_head *);
+typedef int (*oper_func)(char *, struct list_head *);
 
 
 typedef struct oper_mapping {
@@ -27,10 +27,10 @@ typedef struct oper_mapping {
 int network_operational_start();
 void network_operational_stop();
 
-int network_operational_operstatus(sr_val_t *, struct list_head *);
-int network_operational_mac(sr_val_t *, struct list_head *);
-int network_operational_rx(sr_val_t *, struct list_head *);
-int network_operational_tx(sr_val_t *, struct list_head *);
-int network_operational_mtu(sr_val_t *, struct list_head *);
-int network_operational_ip(sr_val_t *, struct list_head *);
-int network_operational_neigh(sr_val_t *val, struct list_head *);
+int network_operational_operstatus(char *, struct list_head *);
+int network_operational_mac(char *, struct list_head *);
+int network_operational_rx(char *, struct list_head *);
+int network_operational_tx(char *, struct list_head *);
+int network_operational_mtu(char *, struct list_head *);
+int network_operational_ip(char *, struct list_head *);
+int network_operational_neigh(char *val, struct list_head *);
