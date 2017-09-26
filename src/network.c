@@ -207,6 +207,9 @@ rx_transform(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
+    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/out-octets";
+    char xpath[MAX_XPATH];
+
 
     json_object_object_get_ex(base,
                               "br-lan",
@@ -222,10 +225,11 @@ rx_transform(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/out-octets");
-
+    sprintf(xpath, fmt, interface_name);
+    sr_val_set_xpath(list_value->value, xpath);
     list_value->value->type = SR_UINT64_T;
     sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+
     list_add(&list_value->head, list);
 }
 
@@ -249,6 +253,8 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/in-octets";
+    char xpath[MAX_XPATH];
 
     json_object_object_get_ex(base,
                               "br-lan",
@@ -263,7 +269,8 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/in-octets");
+    sprintf(xpath, fmt, interface_name);
+    sr_val_set_xpath(list_value->value, xpath);
 
     list_value->value->type = SR_UINT64_T;
     sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
@@ -398,9 +405,9 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *table, *iter_object;
     /* const char *ubus_result; */
-    char xpath[MAX_XPATH];
     const char *fmt =
-        "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
+        "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
+    char xpath[MAX_XPATH];
 
     /* INF("%s", json_object_to_json_string(base)); */
 
@@ -428,7 +435,7 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
         /* INF("\t\t%s", ip); */
         /* INF("\t\t%s", mac); */
 
-        sprintf(xpath, fmt, remove_quotes(ip));
+        sprintf(xpath, fmt, interface_name, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
         sr_val_set_xpath(list_value->value, strdup(xpath));
