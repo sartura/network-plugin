@@ -174,7 +174,7 @@ exit:
 static int
 config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t *value)
 {
-    char *val_str;
+    char *val_str = NULL;
     char ucipath[MAX_UCI_PATH] ;
     char xpath[MAX_XPATH];
     int rc = SR_ERR_OK;
@@ -396,6 +396,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     if (SR_EV_VERIFY == event) {
         restart_network(2);
     }
+
+    sr_free_change_iter(it);
 
     return rc;
 }

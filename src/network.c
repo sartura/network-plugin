@@ -85,13 +85,12 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 
     json_object_put(base_object);
     free(json_string);
-    /* free(status_container_msg); */
-    /* INF_MSG("\n---END= \n---"); */
 }
 
 static int
 ubus_base(const char *ubus_lookup_path,
-          struct status_container *msg)
+          struct status_container *msg,
+          struct blob_buf *blob)
 {
     /* INF("list null %d", msg->list==NULL); */
     uint32_t id = 0;
@@ -106,16 +105,14 @@ ubus_base(const char *ubus_lookup_path,
         goto exit;
     }
 
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    rc = ubus_invoke(ctx, id, msg->ubus_method, buf.head, ubus_base_cb, (void *) msg, 2000);
+    rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, 2000);
     if (rc) {
         INF("ubus [%s]: no object %s\n", ubus_strerror(rc), msg->ubus_method);
         goto exit;
     }
 
   exit:
-    blob_buf_free(&buf);
+    blob_buf_free(blob);
 
     return rc;
 
@@ -152,7 +149,9 @@ network_operational_operstatus(char *interface_name, struct list_head *list)
 {
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", operstatus_transform, interface_name, list);
-    ubus_base("network.interface.%s", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.interface.%s", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -190,7 +189,9 @@ network_operational_mac(char *interface_name, struct list_head *list)
 {
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", mac_transform, interface_name, list);
-    ubus_base("network.device", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.device", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -230,7 +231,9 @@ network_operational_rx(char *interface_name, struct list_head *list)
 
     struct status_container *msg = NULL;
     make_status_container(&msg, "status", rx_transform, interface_name, list);
-    ubus_base("network.device", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.device", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -260,7 +263,6 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
     list_value->value->type = SR_UINT64_T;
     sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
     list_add(&list_value->head, list);
-
 }
 
 int
@@ -270,7 +272,9 @@ network_operational_tx(char *interface_name, struct list_head *list)
 
     struct status_container *msg;
     make_status_container(&msg, "status", tx_transform, interface_name, list);
-    ubus_base("network.device", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.device", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -308,7 +312,9 @@ network_operational_mtu(char *interface_name, struct list_head *list)
 {
     struct status_container *msg;
     make_status_container(&msg, "status", mtu_transform, interface_name, list);
-    ubus_base("network.device", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.device", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -367,7 +373,9 @@ network_operational_ip(char *interface_name, struct list_head *list)
 
     struct status_container *msg;
     make_status_container(&msg, "status", ip_transform, interface_name, list);
-    ubus_base("network.interface.%s", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("network.interface.%s", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -426,7 +434,9 @@ network_operational_neigh(char *interface_name, struct list_head *list)
     /* Sets the value in ubus callback. */
     struct status_container *msg;
     make_status_container(&msg, "arp", neigh_transform, interface_name, list);
-    ubus_base("router.net", msg);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("router.net", msg, &buf);
 
     return SR_ERR_OK;
 }
