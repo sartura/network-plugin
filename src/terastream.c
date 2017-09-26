@@ -180,6 +180,8 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     int rc = SR_ERR_OK;
     char *device_name = get_key_value(value->xpath, 0);
 
+    if (!device_name) goto exit;
+
     sprintf(xpath, mapping->xpath, device_name);
 
     val_str = sr_val_to_str(value);
@@ -192,6 +194,7 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
     free(val_str);
+    free(device_name);
 
   exit:
     return rc;
