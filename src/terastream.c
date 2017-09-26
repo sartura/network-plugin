@@ -515,12 +515,12 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         cnt = list_size(&list);
         INF("Allocating %zu values.", cnt);
 
-        struct value_node *vn;
+        struct value_node *vn, *q;
         size_t j = 0;
         rc = sr_new_values(cnt, values);
         INF("%s", sr_strerror(rc));
 
-        list_for_each_entry(vn, &list, head) {
+        list_for_each_entry_safe(vn, q, &list, head) {
             rc = sr_dup_val_data(&(*values)[j], vn->value);
             SR_CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
             j += 1;
