@@ -19,10 +19,9 @@ const char *YANG_MODEL = "ietf-interfaces";
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
     char *default_value;
-    char *ucipath;
-    char *xpath;
+    char ucipath[MAX_UCI_PATH];
+    char xpath[MAX_XPATH];
 } sr_uci_link;
-
 
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
@@ -92,77 +91,37 @@ val_has_data(sr_type_t type) {
     else return false;
 }
 
-
-/* static char * */
-/* get_key_value_second(char *orig_xpath) */
-/* { */
-/*   char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL; */
-/*     sr_xpath_ctx_t state = {0,0,0,0}; */
-
-/*     xpath = strdup(orig_xpath); */
-
-/*     char *cur = strstr(xpath, "ssid"); */
-/*     if (!cur) { */
-/*       return NULL; */
-/*     } */
-
-/*     node = sr_xpath_next_node(xpath, &state); */
-/*     if (NULL == node) { */
-/*       goto error; */
-/*     } */
-/*     int counter = 0; */
-/*     while(true) { */
-/*       key = sr_xpath_next_key_name(NULL, &state); */
-/*       if (NULL != key) { */
-/*         val = sr_xpath_next_key_value(NULL, &state); */
-/*         if (++counter == 2) break; */
-/*         /\* break; *\/ */
-/*       } */
-/*       node = sr_xpath_next_node(NULL, &state); */
-/*       if (NULL == node) { */
-/*         break; */
-/*       } */
-/*     } */
-
-
-/*   error: */
-/*     if (NULL != xpath) { */
-/*         free(xpath); */
-/*     } */
-/*     return key ? strdup(val) : NULL; */
-/* } */
-
 static char *
-get_key_value(char *orig_xpath)
+get_key_value(char *orig_xpath, int n)
 {
-    char *key = NULL, *node = NULL, *xpath = NULL;
-    sr_xpath_ctx_t state = {0,0,0,0};
+  char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL;
+  sr_xpath_ctx_t state = {0,0,0,0};
 
-    xpath = strdup(orig_xpath);
-
-    node = sr_xpath_next_node(xpath, &state);
+  xpath = strdup(orig_xpath);
+  node = sr_xpath_next_node(xpath, &state);
+  if (NULL == node) {
+    goto error;
+  }
+  int counter = 0;
+  while(true) {
+    key = sr_xpath_next_key_name(NULL, &state);
+    if (NULL != key) {
+      val = sr_xpath_next_key_value(NULL, &state);
+      if (counter++ == n) break;
+      /* break; */
+    }
+    node = sr_xpath_next_node(NULL, &state);
     if (NULL == node) {
-        goto error;
+      break;
     }
-    while(true) {
-        key = sr_xpath_next_key_name(NULL, &state);
-        if (NULL != key) {
-            key = sr_xpath_next_key_value(NULL, &state);
-            break;
-        }
-        node = sr_xpath_next_node(NULL, &state);
-        if (NULL == node) {
-            break;
-        }
-    }
+  }
 
-  error:
-    if (NULL != xpath) {
-        free(xpath);
-    }
-    return key ? strdup(key) : NULL;
+ error:
+  if (NULL != xpath) {
+    free(xpath);
+  }
+  return key ? strdup(val) : NULL;
 }
-
 
 static int
 get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
@@ -219,7 +178,7 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     char ucipath[MAX_UCI_PATH] ;
     char xpath[MAX_XPATH];
     int rc = SR_ERR_OK;
-    char *device_name = get_key_value(value->xpath);
+    char *device_name = get_key_value(value->xpath, 0);
 
     sprintf(xpath, mapping->xpath, device_name);
 
@@ -269,7 +228,6 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
     const int n_mappings = ARR_SIZE(table_sr_uci);
     int rc;
 
-    /* Init type for interface... */
     sprintf(xpath, xpath_network_type_format, name);
     rc = sr_set_item_str(session,
                          xpath,
@@ -524,15 +482,15 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
 
     struct list_head list = LIST_HEAD_INIT(list);
     if (sr_xpath_node_name_eq(cb_xpath, "interface")) {
-        network_operational_start();
         oper_func func;
         n_mappings = ARR_SIZE(table_interface_status);
 
+        network_operational_start();
 
         for (size_t i = 0; i < n_mappings; i++) {
             node = table_interface_status[i].node;
             func = table_interface_status[i].op_func;
-            /* INF("\tDiagnostics for: %s", node); */
+
             for (size_t j = 0; j < pctx->interface_count; j++) {
               rc = func(pctx->interface_names[j], &list);
               /* INF("%s", sr_strerror((rc))); */
@@ -549,13 +507,13 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
         INF("%s", sr_strerror(rc));
 
         list_for_each_entry(vn, &list, head) {
-            /* sr_print_val(vn->value); */
             rc = sr_dup_val_data(&(*values)[j], vn->value);
-            /* INF("%zu: %s", j, sr_strerror(rc)); */
+            SR_CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
             j += 1;
             sr_free_val(vn->value);
+            list_del(&vn->head);
+            free(vn);
         }
-
 
         *values_cnt = cnt;
 

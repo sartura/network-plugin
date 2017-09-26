@@ -12,19 +12,29 @@ struct status_container {
 struct ubus_context *ctx;
 struct status_container *container_msg;
 
+static char *
+remove_quotes(const char *str)
+{
+  char *unquoted;
+  unquoted = (char *) str;
+  unquoted = unquoted + 1;
+  unquoted[strlen(unquoted) - 1] = '\0';
+
+  return unquoted;
+}
 int
 network_operational_start()
 {
     if (ctx) return 0;
     INF("Connect ubus context. %zu", (size_t) ctx);
     container_msg = calloc(1,sizeof(*container_msg));
-    
+
     ctx = ubus_connect(NULL);
     if (ctx == NULL) {
         INF_MSG("Cant allocate ubus\n");
         return -1;
     }
-    
+
     return 0;
 }
 
@@ -144,17 +154,6 @@ network_operational_operstatus(char *interface_name, struct list_head *list)
     ubus_base("network.interface.%s", msg);
 
     return SR_ERR_OK;
-}
-
-static char *
-remove_quotes(const char *str)
-{
-    char *unquoted;
-    unquoted = strdup(str);
-    unquoted = unquoted + 1;
-    unquoted[strlen(unquoted) - 1] = '\0';
-
-    return strdup(unquoted);
 }
 
 static void
