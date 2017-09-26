@@ -115,7 +115,7 @@ ubus_base(const char *ubus_lookup_path,
     }
 
   exit:
-    /* blob_buf_free(&buf); */
+    blob_buf_free(&buf);
 
     return rc;
 
@@ -127,14 +127,15 @@ operstatus_transform(json_object *base, char *interface_name, struct list_head *
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
 
     json_object_object_get_ex(base,
                               "up",
                               &t);
     ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
 
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
     sr_val_set_str_data(list_value->value, SR_ENUM_T,
                         !strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
 
@@ -161,13 +162,14 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
+    struct value_node *list_value;
+
     json_object_object_get_ex(base,
                               "br-lan",
                               &t);
     ubus_result = json_object_to_json_string(t);
-    /* INF("%s", ubus_result); */
+    if (!ubus_result) return;
 
-    struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
 
@@ -175,8 +177,8 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
                               "macaddr",
                               &t);
     ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
 
-    /* INF("mac %s", ubus_result); */
     sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
 
     list_value->value->xpath = strdup("/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address");
@@ -198,18 +200,20 @@ rx_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
+    struct value_node *list_value;
+
     json_object_object_get_ex(base,
                               "br-lan",
                               &t);
     ubus_result = json_object_to_json_string(t);
-    /* INF("%s", ubus_result); */
+    if (!ubus_result) return;
 
     json_object_object_get_ex(t, "statistics", &t);
-    ubus_result = json_object_to_json_string(t);
+    /* ubus_result = json_object_to_json_string(t); */
     json_object_object_get_ex(t, "rx_bytes", &t);
     ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
 
-    struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/out-octets");
@@ -236,6 +240,8 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
+    struct value_node *list_value;
+
     json_object_object_get_ex(base,
                               "br-lan",
                               &t);
@@ -245,9 +251,8 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
     ubus_result = json_object_to_json_string(t);
     json_object_object_get_ex(t, "tx_bytes", &t);
     ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
 
-    /* INF("%s", ubus_result); */
-    struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/in-octets");
@@ -275,6 +280,8 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
+    struct value_node *list_value;
+
     json_object_object_get_ex(base,
                               "eth0.1",
                               &t);
@@ -283,8 +290,8 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
 
     json_object_object_get_ex(t, "mtu", &t);
     ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
 
-    struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/mtu");
@@ -312,7 +319,8 @@ ip_transform(json_object *base, char *interface_name, struct list_head *list)
     const char *ip;
     uint8_t prefix_length = 0;
     struct json_object *t;
-    /* const char *ubus_result; */
+    struct value_node *list_value;
+    char xpath[MAX_XPATH];
 
     json_object_object_get_ex(base, "ipv4-address", &t);
     if (!t) {
@@ -342,9 +350,7 @@ ip_transform(json_object *base, char *interface_name, struct list_head *list)
     const char *fmt =
         "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
 
-    char xpath[MAX_XPATH];
     sprintf(xpath, fmt, interface_name, ip);
-    struct value_node *list_value;
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, xpath);
