@@ -624,7 +624,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     rc = sr_dp_get_items_subscribe(session,
                                    "/ietf-interfaces:interfaces-state",
                                    data_provider_cb, *private_ctx,
-                                   SR_SUBSCR_DEFAULT, &ctx->subscription);
+                                   SR_SUBSCR_CTX_REUSE, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
