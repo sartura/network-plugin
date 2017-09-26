@@ -332,6 +332,21 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
     return rc;
 }
 
+static void
+restart_network(int wait_time)
+{
+    pid_t restart_pid;
+
+    restart_pid = fork();
+    if (restart_pid > 0) {
+        INF("[pid=%d] Restarting network in %d seconds after module is changed.", restart_pid, wait_time);
+        sleep(wait_time);
+        execv("/etc/init.d/network", (char *[]){ "/etc/init.d/network", "restart", NULL });
+        exit(0);
+    } else {
+        INF("[pid=%d] Could not execute network restart, do it manually?", restart_pid);
+    }
+}
 
 static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
@@ -375,15 +390,9 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     }
     INF_MSG("\n\n ========== END OF CHANGES =======================================\n\n");
 
-    pid_t pid=fork();
-    if (pid==0) {
-        execl("/etc/init.d/network", "network", "restart", (char *) NULL);
-        exit(127);
-    } else {
-        waitpid(pid, 0, 0);
+    if (SR_EV_VERIFY == event) {
+        restart_network(2);
     }
-
-
 
     return rc;
 }
@@ -566,12 +575,10 @@ sync_datastores(struct plugin_ctx *ctx)
 int
 sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
-    sr_subscription_ctx_t *subscription = NULL;
     int rc = SR_ERR_OK;
+    struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
-
-    struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
 
     /* Allocate UCI context for uci files. */
     ctx->uctx = uci_alloc_context();
@@ -602,13 +609,13 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
-                                    0, SR_SUBSCR_DEFAULT, &subscription);
+                                    0, SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
     /* Operational data handling. */
     INF_MSG("Subscribing to diagnostics");
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
-                                   SR_SUBSCR_DEFAULT, &subscription);
+                                   SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     INF("sr_plugin_init_cb for sysrepo-plugin-dt-terastream %s", sr_strerror(rc));
@@ -618,7 +625,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     rc = sr_dp_get_items_subscribe(session,
                                    "/ietf-interfaces:interfaces-state",
                                    data_provider_cb, *private_ctx,
-                                   SR_SUBSCR_DEFAULT, &subscription);
+                                   SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
@@ -631,7 +638,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
   error:
     SRP_LOG_ERR("Plugin initialization failed: %s", sr_strerror(rc));
-    sr_unsubscribe(session, subscription);
+    sr_unsubscribe(session, ctx->subscription);
     free(ctx);
     return rc;
 }
