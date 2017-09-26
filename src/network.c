@@ -162,6 +162,9 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
+    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
+    char xpath[MAX_XPATH];
+
 
     json_object_object_get_ex(base,
                               "br-lan",
@@ -178,9 +181,11 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
     ubus_result = json_object_to_json_string(t);
     if (!ubus_result) return;
 
+    sprintf(xpath, fmt, interface_name);
+    sr_val_set_xpath(list_value->value, xpath);
     sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
 
-    list_value->value->xpath = strdup("/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address");
+    //list_value->value->xpath = strdup("/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address");
     list_add(&list_value->head, list);
 }
 
@@ -285,11 +290,16 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/mtu";
+    char xpath[MAX_XPATH];
 
     json_object_object_get_ex(base,
                               "eth0.1",
                               &t);
-    ubus_result = json_object_to_json_string(t);
+    if (!t) {
+      return;
+    }
+     ubus_result = json_object_to_json_string(t);
     /* INF("%s", ubus_result); */
 
     json_object_object_get_ex(t, "mtu", &t);
@@ -298,7 +308,9 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/mtu");
+    sprintf(xpath, fmt, interface_name);
+    //    sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/mtu");
+    sr_val_set_xpath(list_value->value, xpath);
 
     list_value->value->type = SR_UINT16_T;
     sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
