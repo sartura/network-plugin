@@ -33,4 +33,10 @@ int network_operational_rx(char *, struct list_head *);
 int network_operational_tx(char *, struct list_head *);
 int network_operational_mtu(char *, struct list_head *);
 int network_operational_ip(char *, struct list_head *);
-int network_operational_neigh(char *val, struct list_head *);
+int network_operational_neigh(char *, struct list_head *);
+
+int sfp_rx_pwr(char *, struct list_head *);
+int sfp_tx_pwr(char *, struct list_head *);
+int sfp_current(char *, struct list_head *);
+int sfp_voltage(char *, struct list_head *);
+

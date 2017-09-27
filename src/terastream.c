@@ -56,6 +56,8 @@ static oper_mapping table_interface_status[] = {
   { "mtu", network_operational_mtu },
   { "ip", network_operational_ip },
   { "neighbor", network_operational_neigh },
+  { "voltage", sfp_voltage },
+  { "current", sfp_current },
 };
 
 /* Update UCI configuration from Sysrepo datastore. */

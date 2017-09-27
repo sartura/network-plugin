@@ -184,7 +184,6 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
     sr_val_set_xpath(list_value->value, xpath);
     sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
 
-    //list_value->value->xpath = strdup("/ietf-interfaces:interfaces-state/interface[name='wan']/phys-address");
     list_add(&list_value->head, list);
 }
 
@@ -306,7 +305,6 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
       return;
     }
      ubus_result = json_object_to_json_string(t);
-    /* INF("%s", ubus_result); */
 
     json_object_object_get_ex(t, "mtu", &t);
     ubus_result = json_object_to_json_string(t);
@@ -315,7 +313,6 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
     sprintf(xpath, fmt, interface_name);
-    //    sr_val_set_xpath(list_value->value, "/ietf-interfaces:interfaces-state/interface[name='wan']/ietf-ip:ipv4/mtu");
     sr_val_set_xpath(list_value->value, xpath);
 
     list_value->value->type = SR_UINT16_T;
@@ -448,3 +445,111 @@ network_operational_neigh(char *interface_name, struct list_head *list)
 
     return SR_ERR_OK;
 }
+
+static void
+sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
+{
+    struct json_object *t;
+    const char *ubus_result;
+    struct value_node *list_value;
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/rx-pwr";
+    char xpath[MAX_XPATH];
+    char *end = NULL;
+
+    json_object_object_get_ex(base,
+                              "rx-pwr",
+                              &t);
+    if (!t) {
+        return;
+    }
+    ubus_result = json_object_to_json_string(t);
+    if (!ubus_result) return;
+
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    sprintf(xpath, fmt, interface_name);
+    sr_val_set_xpath(list_value->value, xpath);
+
+    INF("%s", ubus_result);
+    list_value->value->type = SR_DECIMAL64_T;
+    double res = strtod(ubus_result, &end);
+    INF("%f", res);
+    list_value->value->data.decimal64_val = res;
+    /* sscanf(ubus_result, "%", &list_value->value->data.decimal64_val); */
+
+    list_add(&list_value->head, list);
+}
+
+int sfp_rx_pwr(char *interface_name, struct list_head *list) {
+  
+    struct status_container *msg;
+    make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, interface_name, list);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("sfp.ddm", msg, &buf);
+
+    return SR_ERR_OK;
+}
+
+int sfp_tx_pwr(char *, struct list_head *);
+
+static void
+sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
+{
+    struct json_object *t;
+    const char *ubus_result;
+    struct value_node *list_value;
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/rx-current";
+    char xpath[MAX_XPATH];
+    char *end = NULL;
+
+    json_object_object_get_ex(base,
+                              "current",
+                              &t);
+    if (!t) {
+        return;
+    }
+
+    ubus_result = json_object_to_json_string(t);
+    INF("%s", ubus_result);
+    if (!ubus_result) return;
+
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    sprintf(xpath, fmt, interface_name);
+    sr_val_set_xpath(list_value->value, xpath);
+
+    INF("%s", ubus_result);
+    list_value->value->type = SR_DECIMAL64_T;
+    double res = strtod(ubus_result, &end);
+    INF("%f", res);
+    list_value->value->data.decimal64_val = res;
+    /* sscanf(ubus_result, "%", &list_value->value->data.decimal64_val); */
+
+    list_add(&list_value->head, list);
+}
+
+
+int sfp_current(char *interface_name, struct list_head *list)
+{
+    struct status_container *msg;
+    make_status_container(&msg, "get-current", sfp_rx_pwr_cb, interface_name, list);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("sfp.ddm", msg, &buf);
+
+    return SR_ERR_OK;
+}
+
+int sfp_voltage(char *interface_name, struct list_head *list)
+{
+    struct status_container *msg;
+    make_status_container(&msg, "get-voltage", sfp_rx_pwr_cb, interface_name, list);
+    struct blob_buf buf = {0,};
+    blob_buf_init(&buf, 0);
+    ubus_base("sfp.ddm", msg, &buf);
+
+    return SR_ERR_OK;
+
+}
+
