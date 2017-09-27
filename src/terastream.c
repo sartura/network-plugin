@@ -49,13 +49,13 @@ static adiag_node_func_m table_operational[] = {
 };
 
 static oper_mapping table_interface_status[] = {
-  { "oper-status", network_operational_operstatus },
-  { "phys-address", network_operational_mac },
-  { "out-octets", network_operational_rx },
-  { "in-octets", network_operational_tx },
-  { "mtu", network_operational_mtu },
-  { "ip", network_operational_ip },
-  { "neighbor", network_operational_neigh },
+  /* { "oper-status", network_operational_operstatus }, */
+  /* { "phys-address", network_operational_mac }, */
+  /* { "out-octets", network_operational_rx }, */
+  /* { "in-octets", network_operational_tx }, */
+  /* { "mtu", network_operational_mtu }, */
+  /* { "ip", network_operational_ip }, */
+  /* { "neighbor", network_operational_neigh }, */
   { "voltage", sfp_voltage },
   { "current", sfp_current },
 };
@@ -474,7 +474,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     size_t n_mappings;
     int rc = SR_ERR_OK;
 
-    INF("%s", cb_xpath);
+    /* INF("%s", cb_xpath); */
 
     if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
         n_mappings = ARR_SIZE(table_operational);
@@ -539,7 +539,7 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     if (*values_cnt > 0) {
         INF("Debug sysrepo values printout: %zu", *values_cnt);
         for (size_t i = 0; i < *values_cnt; i++){
-            sr_print_val(&(*values)[i]);
+                     sr_print_val(&(*values)[i]);
         }
     }
 

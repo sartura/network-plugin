@@ -1,6 +1,6 @@
-module ietf-spf {
-  namespace "urn:ietf:params:xml:ns:yang:ietf-spf";
-  prefix spf;
+module ietf-sfp {
+  namespace "urn:ietf:params:xml:ns:yang:ietf-sfp";
+  prefix sfp;
 
   import ietf-interfaces {
     prefix if;
@@ -12,39 +12,44 @@ module ietf-spf {
     prefix yang;
   }
 
-  organization "";
-  contact
-    "WG Web:   <http://tools.ietf.org/wg/netmod/>
-     WG List:  <mailto:netmod@ietf.org>
+  organization "DT";
 
   description
-    "SPF";
+    "SFP";
 
   augment "/if:interfaces-state/if:interface" {
     description
-      "Data nodes for the operational state of SPF on interfaces.";
+      "Data nodes for the operational state of SFP on interfaces.";
     container ddm {
-      presence "Present if SPF is enabled on this interface";
+//      presence "Present if SFP is enabled on this interface";
       config false;
       description
         ".";
       leaf rx-pwr {
-        type decimal64;
+        type decimal64 {
+             fraction-digits 2;
+        }
         description
           "";
       }
       leaf tx-pwr {
-        type decimal64;
+        type decimal64 {
+             fraction-digits 2;
+        }
         description
           "";
       }
       leaf current {
-        type decimal64;
+        type decimal64 {
+             fraction-digits 2;
+        }
         description
           "";
       }
       leaf voltage {
-        type decimal64;
+        type decimal64 {
+             fraction-digits 2;
+        }
         description
           "";
       }
