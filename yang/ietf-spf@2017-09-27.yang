@@ -1,0 +1,53 @@
+module ietf-spf {
+  namespace "urn:ietf:params:xml:ns:yang:ietf-spf";
+  prefix spf;
+
+  import ietf-interfaces {
+    prefix if;
+  }
+  import ietf-inet-types {
+    prefix inet;
+  }
+  import ietf-yang-types {
+    prefix yang;
+  }
+
+  organization "";
+  contact
+    "WG Web:   <http://tools.ietf.org/wg/netmod/>
+     WG List:  <mailto:netmod@ietf.org>
+
+  description
+    "SPF";
+
+  augment "/if:interfaces-state/if:interface" {
+    description
+      "Data nodes for the operational state of SPF on interfaces.";
+    container ddm {
+      presence "Present if SPF is enabled on this interface";
+      config false;
+      description
+        ".";
+      leaf rx-pwr {
+        type decimal64;
+        description
+          "";
+      }
+      leaf tx-pwr {
+        type decimal64;
+        description
+          "";
+      }
+      leaf current {
+        type decimal64;
+        description
+          "";
+      }
+      leaf voltage {
+        type decimal64;
+        description
+          "";
+      }
+    }
+  }
+}
