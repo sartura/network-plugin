@@ -2,6 +2,9 @@
 
 #include "common.h"
 
+#define MAX_UBUS_PATH 100
+#define UBUS_INVOKE_TIMEOUT 2000
+
 struct status_container {
     char *interface_name;
     const char *ubus_method;
@@ -73,15 +76,11 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
     if (!msg) {
         return;
     }
-    /* INF("list null %d", status_container_msg->list==NULL); */
 
     json_string = blobmsg_format_json(msg, true);
     base_object = json_tokener_parse(json_string);
-    /* INF("\n---JSON_STRING = %s \n---", json_string); */
 
-    /* TODO */
     status_container_msg->transform(base_object, status_container_msg->interface_name, status_container_msg->list);
-    /* end TODO */
 
     json_object_put(base_object);
     free(json_string);
@@ -96,16 +95,16 @@ ubus_base(const char *ubus_lookup_path,
     uint32_t id = 0;
     int rc = SR_ERR_OK;
 
-    char ubuf[100];
+    char ubuf[MAX_UBUS_PATH];
     sprintf(ubuf, ubus_lookup_path, msg->interface_name);
-    /* INF("ctx null %d %s\n\t%s", ctx==NULL, ubus_lookup_path, ubuf); */
+
     rc = ubus_lookup_id(ctx, ubuf, &id);
     if (rc) {
         INF("ubus [%d]: %s\n", rc, ubus_strerror(rc));
         goto exit;
     }
 
-    rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, 2000);
+    rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, UBUS_INVOKE_TIMEOUT);
     if (rc) {
         INF("ubus [%s]: no object %s\n", ubus_strerror(rc), msg->ubus_method);
         goto exit;
@@ -409,38 +408,28 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
         "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
     char xpath[MAX_XPATH];
 
-    /* INF("%s", json_object_to_json_string(base)); */
-
     json_object_object_get_ex(base, "table", &table);
-    /* ubus_result = json_object_to_json_string(table); */
-    /* INF("---TABLE:\n%s", ubus_result); */
 
     /* Get ip and mask (prefix length) from address. */
-    // enum json_type type;
     const int N =  	json_object_array_length(table);
-    /* INF("table has %d entries.", N); */
     struct value_node *list_value;
     for (int i = 0; i < N; i++) {
         json_object *ip_obj, *mac_obj;
         const char *ip, *mac;
 
         iter_object = json_object_array_get_idx(table, i);
-        /* INF("[%d]\n\t%s", i, json_object_to_json_string(iter_object)); */
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
         json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
 
         ip = json_object_to_json_string(ip_obj);
         mac = json_object_to_json_string(mac_obj);
-        /* INF("\t\t%s", ip); */
-        /* INF("\t\t%s", mac); */
 
         sprintf(xpath, fmt, interface_name, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
         sr_val_set_xpath(list_value->value, strdup(xpath));
         sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(mac));
-        sr_print_val(list_value->value);
 
         list_add(&list_value->head, list);
 
