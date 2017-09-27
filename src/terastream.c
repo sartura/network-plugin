@@ -49,13 +49,15 @@ static adiag_node_func_m table_operational[] = {
 };
 
 static oper_mapping table_interface_status[] = {
-  /* { "oper-status", network_operational_operstatus }, */
-  /* { "phys-address", network_operational_mac }, */
-  /* { "out-octets", network_operational_rx }, */
-  /* { "in-octets", network_operational_tx }, */
-  /* { "mtu", network_operational_mtu }, */
-  /* { "ip", network_operational_ip }, */
-  /* { "neighbor", network_operational_neigh }, */
+  { "oper-status", network_operational_operstatus },
+  { "phys-address", network_operational_mac },
+  { "out-octets", network_operational_rx },
+  { "in-octets", network_operational_tx },
+  { "mtu", network_operational_mtu },
+  { "ip", network_operational_ip },
+  { "neighbor", network_operational_neigh },
+  { "rx-pwr", sfp_rx_pwr },
+  { "tx-pwr", sfp_tx_pwr },
   { "voltage", sfp_voltage },
   { "current", sfp_current },
 };

@@ -27,28 +27,28 @@ module ietf-sfp {
         ".";
       leaf rx-pwr {
         type decimal64 {
-             fraction-digits 2;
+             fraction-digits 4;
         }
         description
           "";
       }
       leaf tx-pwr {
         type decimal64 {
-             fraction-digits 2;
+             fraction-digits 4;
         }
         description
           "";
       }
       leaf current {
         type decimal64 {
-             fraction-digits 2;
+             fraction-digits 4;
         }
         description
           "";
       }
       leaf voltage {
         type decimal64 {
-             fraction-digits 2;
+             fraction-digits 4;
         }
         description
           "";
