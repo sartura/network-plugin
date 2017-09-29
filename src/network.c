@@ -169,6 +169,7 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
                               "br-lan",
                               &t);
     ubus_result = json_object_to_json_string(t);
+
     if (!ubus_result) return;
 
     list_value = calloc(1, sizeof *list_value);
@@ -425,7 +426,7 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
         sprintf(xpath, fmt, interface_name, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
-        sr_val_set_xpath(list_value->value, strdup(xpath));
+        sr_val_set_xpath(list_value->value, xpath);
         sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(mac));
 
         list_add(&list_value->head, list);
