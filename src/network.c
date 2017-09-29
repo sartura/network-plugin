@@ -168,18 +168,18 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
     json_object_object_get_ex(base,
                               "br-lan",
                               &t);
+    if (!t) return;
+
     ubus_result = json_object_to_json_string(t);
-
-    if (!ubus_result) return;
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
 
     json_object_object_get_ex(t,
                               "macaddr",
                               &t);
+    if (!t) return;
     ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
+
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
 
     sprintf(xpath, fmt, interface_name);
     sr_val_set_xpath(list_value->value, xpath);
