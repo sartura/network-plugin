@@ -307,6 +307,8 @@ get_uci_interfaces(struct plugin_ctx *pctx)
         }
     }
 
+    if (package) uci_unload(pctx->uctx, package);
+
     return rc;
 }
 
@@ -336,6 +338,7 @@ init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
     SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
   exit:
+    if (package) uci_unload(pctx->uctx, package);
     return rc;
 }
 
