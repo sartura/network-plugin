@@ -452,8 +452,8 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/rx-pwr";
-    char xpath[MAX_XPATH];
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='sfp']/ietf-sfp:ddm/rx-pwr";
+    /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
     json_object_object_get_ex(base,
@@ -467,15 +467,15 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+    /* sprintf(xpath, fmt, interface_name); */
+    sr_val_set_xpath(list_value->value, fmt);
 
     INF("%s", ubus_result);
     int len = strlen(remove_quotes(ubus_result));
     char *decresult = (char*)remove_quotes(ubus_result);
     decresult[len-2] = '\0';
     INF("%s", decresult);
- 
+
     double res = strtod(decresult, &end);
     INF("%f", res);
     list_value->value->type = SR_DECIMAL64_T;
@@ -485,7 +485,7 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int sfp_rx_pwr(char *interface_name, struct list_head *list) {
-  
+
     struct status_container *msg;
     make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, interface_name, list);
     struct blob_buf buf = {0,};
@@ -501,8 +501,8 @@ sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/tx-pwr";
-    char xpath[MAX_XPATH];
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='sfp']/ietf-sfp:ddm/tx-pwr";
+    /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
     json_object_object_get_ex(base,
@@ -516,25 +516,22 @@ sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+    /* sprintf(xpath, fmt, interface_name); */
+    sr_val_set_xpath(list_value->value, fmt);
 
-    INF("%s", ubus_result);
     int len = strlen(remove_quotes(ubus_result));
     char *decresult = (char*)remove_quotes(ubus_result);
     decresult[len-2] = '\0';
-    INF("%s", decresult);
- 
+
     double res = strtod(decresult, &end);
-    INF("%f", res);
     list_value->value->type = SR_DECIMAL64_T;
     list_value->value->data.decimal64_val = res;
 
     list_add(&list_value->head, list);
 }
 
-int sfp_tx_pwr(char *interface_name, struct list_head *list) {
-  
+int sfp_tx_pwr(char *interface_name, struct list_head *list)
+{
     struct status_container *msg;
     make_status_container(&msg, "get-tx-pwr", sfp_tx_pwr_cb, interface_name, list);
     struct blob_buf buf = {0,};
@@ -552,8 +549,8 @@ sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/current";
-    char xpath[MAX_XPATH];
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='sfp']/ietf-sfp:ddm/current";
+    /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
     json_object_object_get_ex(base,
@@ -569,20 +566,19 @@ sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+    /* sprintf(xpath, fmt, interface_name); */
+    sr_val_set_xpath(list_value->value, fmt);
 
     INF("%s", remove_quotes(ubus_result));
     int len = strlen(remove_quotes(ubus_result));
     char *decresult = (char*)remove_quotes(ubus_result);
     decresult[len-2] = '\0';
     INF("%s", decresult);
- 
+
     list_value->value->type = SR_DECIMAL64_T;
     double res = strtod(decresult, &end);
     INF("%f", res);
     list_value->value->data.decimal64_val = res;
-    /* sscanf(ubus_result, "%", &list_value->value->data.decimal64_val); */
     sr_print_val(list_value->value);
     INF_MSG("");
 
@@ -607,8 +603,8 @@ sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-sfp:ddm/voltage";
-    char xpath[MAX_XPATH];
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='sfp']/ietf-sfp:ddm/voltage";
+    /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
     json_object_object_get_ex(base,
@@ -624,8 +620,8 @@ sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+    /* sprintf(xpath, fmt, interface_name) */;
+    sr_val_set_xpath(list_value->value, fmt);
 
     int len = strlen(remove_quotes(ubus_result));
     char *decresult = (char*)remove_quotes(ubus_result);
@@ -651,4 +647,3 @@ int sfp_voltage(char *interface_name, struct list_head *list)
     return SR_ERR_OK;
 
 }
-
