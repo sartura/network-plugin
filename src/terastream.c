@@ -362,6 +362,11 @@ static int
 module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
+    sr_change_iter_t *it = NULL;
+    sr_change_oper_t oper;
+    sr_val_t *old_value = NULL;
+    sr_val_t *new_value = NULL;
+    char change_path[MAX_XPATH] = {0,};
     int rc = SR_ERR_OK;
 
     /* Cover other events: ABORT */
@@ -371,14 +376,8 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         /* print_current_config(session, module_name); */
     } else {
         INF("Some insignificant event %d", event);
-        return SR_ERR_OK;
+        /* return SR_ERR_OK; */
     }
-
-    sr_change_iter_t *it = NULL;
-    sr_change_oper_t oper;
-    sr_val_t *old_value = NULL;
-    sr_val_t *new_value = NULL;
-    char change_path[MAX_XPATH] = {0,};
 
     snprintf(change_path, MAX_XPATH, "/%s:*", module_name);
 
