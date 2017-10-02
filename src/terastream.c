@@ -350,8 +350,8 @@ restart_network(int wait_time)
     restart_pid = fork();
     if (restart_pid > 0) {
         INF("[pid=%d] Restarting network in %d seconds after module is changed.", restart_pid, wait_time);
-        sleep(wait_time);
         execv("/etc/init.d/network", (char *[]){ "/etc/init.d/network", "restart", NULL });
+        sleep(wait_time);
         exit(0);
     } else {
         INF("[pid=%d] Could not execute network restart, do it manually?", restart_pid);
@@ -375,23 +375,18 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
         rc = sr_copy_config(pctx->startup_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
         /* print_current_config(session, module_name); */
     } else {
-        INF("Some insignificant event %d", event);
-        /* return SR_ERR_OK; */
+        INF("Event %d", event);
     }
 
     snprintf(change_path, MAX_XPATH, "/%s:*", module_name);
 
     rc = sr_get_changes_iter(session, change_path , &it);
-    if (SR_ERR_OK != rc) {
-        printf("Get changes iter failed for xpath %s", change_path);
-        return rc;
-    }
+    SR_CHECK_RET(rc, error, "[%s] Get changes iter failed for xpath %s", sr_strerror(rc), change_path);
 
     while (SR_ERR_OK == (rc = sr_get_change_next(session, it,
                 &oper, &old_value, &new_value))) {
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
             rc = config_store_to_uci(pctx, new_value);
-            sr_print_val(new_value);
         }
 
         sr_free_val(old_value);
@@ -400,11 +395,14 @@ module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_ev
     INF_MSG("\n\n ========== END OF CHANGES =======================================\n\n");
 
     if (SR_EV_VERIFY == event) {
-        restart_network(2);
+             restart_network(2);
     }
 
     sr_free_change_iter(it);
 
+    return SR_ERR_OK;
+
+  error:
     return rc;
 }
 
