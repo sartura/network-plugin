@@ -1,0 +1,20 @@
+#!/bin/sh
+
+case "$1" in
+	list)
+		echo '{ "status": {} }'
+	;;
+	call)
+		case "$2" in
+			status)
+				# return json object or an array
+          			echo '{
+					"eth0.1" : {
+	        				"mtu": 1455,
+          },
+          "br-lan": { "mtu": 1466, "statistics": { "rx_bytes": 1337, "tx_bytes": 7331 }}
+				}'
+			;;
+		esac
+	;;
+esac
