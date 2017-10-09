@@ -12,12 +12,18 @@
 
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
 
+struct interface {
+    char name[MAX_INTERFACE_NAME];
+    size_t ifname_count;
+    char ifname[MAX_INTERFACES][MAX_INTERFACE_NAME];
+};
 
 struct plugin_ctx {
-  struct uci_context *uctx;
-  sr_subscription_ctx_t *subscription;
-  sr_conn_ctx_t *startup_connection;
-  sr_session_ctx_t *startup_session;
-  size_t interface_count;
-  char interface_names[MAX_INTERFACES][MAX_INTERFACE_NAME];
+    struct uci_context *uctx;
+    sr_subscription_ctx_t *subscription;
+    sr_conn_ctx_t *startup_connection;
+    sr_session_ctx_t *startup_session;
+    size_t interface_count;
+    char interface_names[MAX_INTERFACES][MAX_INTERFACE_NAME];
+    struct interface interfaces[MAX_INTERFACES];
 };

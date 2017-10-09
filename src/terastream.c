@@ -287,6 +287,21 @@ add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
     return rc;
 }
 
+static int get_uci_interface_ifnames(char *ifnames_line, struct interface *interface)
+{
+    char *token_ptr;
+    char delimiters[] = { ' ', '\t'};
+
+    token_ptr = strtok(ifnames_line, delimiters);
+    while(token_ptr != NULL && interface->ifname_count < MAX_INTERFACES) {
+        strcpy(interface->ifname[interface->ifname_count], token_ptr);
+        token_ptr = strtok(NULL, delimiters);
+        interface->ifname_count++;
+    }
+
+    return 0;
+}
+
 static int
 get_uci_interfaces(struct plugin_ctx *pctx)
 {
@@ -303,7 +318,12 @@ get_uci_interfaces(struct plugin_ctx *pctx)
         char *name = s->e.name;
 
         if (strcmp("interface", type) == 0) {
-            strcpy(pctx->interface_names[pctx->interface_count++], name);
+            strcpy(pctx->interface_names[pctx->interface_count], name);
+            struct uci_option *o = uci_lookup_option(pctx->uctx, s, "ifname");
+            strcpy(pctx->interfaces[pctx->interface_count].name, name);
+            get_uci_interface_ifnames(o->v.string, &pctx->interfaces[pctx->interface_count]);
+
+            pctx->interface_count++;
         }
     }
 
@@ -611,7 +631,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     rc= get_uci_interfaces(ctx);
     SR_CHECK_RET(rc, error, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
-
     /* rc = sr_copy_config(ctx->startup_session, YANG_MODEL, SR_DS_STARTUP, SR_DS_RUNNING); */
     /* INF("%s", sr_strerror(rc)); */
 
@@ -642,6 +661,14 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     }
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
 
+    INF("Interfaces %zu", ctx->interface_count);
+    for (size_t i = 0; i < ctx->interface_count; i++) {
+        struct interface iface = ctx->interfaces[i];
+        INF("=== %zu ---- %s [%zu] ===", i, iface.name, iface.ifname_count);
+        for (size_t j = 0; j < iface.ifname_count; j++) {
+            INF("\t[%zu] %s", j, iface.ifname[j]);
+        }
+    }
     return SR_ERR_OK;
 
   error:
