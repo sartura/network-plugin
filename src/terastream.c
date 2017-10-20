@@ -334,12 +334,14 @@ restart_network(int wait_time)
     pid_t restart_pid;
 
     restart_pid = fork();
-    if (restart_pid > 0) {
+    if (restart_pid == 0) {
         INF("[pid=%d] Restarting network in %d seconds after module is changed.", restart_pid, wait_time);
-        execv("/etc/init.d/network", (char *[]){ "/etc/init.d/network", "restart", NULL });
-        sleep(wait_time);
-        exit(0);
+        system("/etc/init.d/network restart > /dev/null");
+        //execv("/etc/init.d/network", (char *[]){ "/etc/init.d/network", "restart", NULL });
+        //sleep(wait_time);
+        exit(127);
     } else {
+        waitpid(restart_pid, 0, 0);
         INF("[pid=%d] Could not execute network restart, do it manually?", restart_pid);
     }
 }
