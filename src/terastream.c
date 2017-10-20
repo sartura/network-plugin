@@ -271,7 +271,6 @@ parse_network_config(struct plugin_ctx *pctx)
         if (strcmp("interface", type) == 0) {
             bool ipv6 = false;
             bool dhcp = false;
-            char *interface = ipv6 ? "6" : "4";
             /* parse the interface, check IP type
              * IPv4 -> static, dhcp; IPv6 -> dhcpv6 */
 
@@ -281,6 +280,7 @@ parse_network_config(struct plugin_ctx *pctx)
             UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
             if (0 == strncmp("dhcpv6", value, strlen(value))) ipv6 = true;
             if (0 == strncmp("dhcp", value, strlen("dhcp"))) dhcp = true;
+            char *interface = ipv6 ? "6" : "4";
 
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
             rc = get_uci_item(pctx->uctx, ucipath, &value);
