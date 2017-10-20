@@ -26,15 +26,15 @@ typedef struct sr_uci_mapping {
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
-    { "1500", "network.%s.mtu",
-      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu" },
-    { "1500", "network.%s.mtu",
-      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
-
-    { "24", "network.%s.ipaddr",
-      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
-    { "64", "network.%s.ip6addr",
-      "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
+    { "192.168.1.1", "network.%s.ipaddr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/ip" },
+    { "", "network.%s.ip6addr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/ip" },
+    { "1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu" },
+    { "1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
+    { "true", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled" },
+    { "true", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled" },
+    { "24", "network.%s.ip4assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
+    { "64", "network.%s.ip6assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
+    { "", "network.%s.ip4assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask" },
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
@@ -189,8 +189,10 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     sprintf(xpath, mapping->xpath, device_name);
 
     val_str = sr_val_to_str(value);
-    if (NULL == val_str) {
-        val_str = strdup(mapping->default_value);
+    if (!val_str) {
+        ERR("val_to_str %s", sr_strerror(rc));
+        rc = SR_ERR_INTERNAL;
+        goto exit;
     }
 
     sprintf(ucipath, mapping->ucipath, device_name);
@@ -200,7 +202,7 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     free(val_str);
     free(device_name);
 
-  exit:
+exit:
     return rc;
 }
 
@@ -217,148 +219,103 @@ config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value)
     for (int i = 0; i < n_mappings; i++) {
         if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
             rc = config_xpath_to_ucipath(pctx, &table_sr_uci[i], value);
-            INF("Failed to map xpath to ucipath: %s", sr_strerror(rc));
+            SR_CHECK_RET(rc, error, "Failed to map xpath to ucipath: %s", sr_strerror(rc));
         }
     }
 
-    return SR_ERR_OK;
+error:
+    return rc;
 }
 
-/* Given name of the UCI interface, fill 'ietf-interfaces' interface.
- * Default mandatory type is also added first.
-*/
 static int
-add_interface(struct plugin_ctx *pctx, sr_session_ctx_t *session, char *name)
+parse_network_config(struct plugin_ctx *pctx)
 {
-    char xpath[MAX_XPATH];
-    char ucipath[MAX_UCI_PATH];
-    const int n_mappings = ARR_SIZE(table_sr_uci);
+    struct uci_element *e;
+    struct uci_section *s;
+    struct uci_package *package = NULL;
+    char ucipath[MAX_UCI_PATH] = {0};
+    char xpath[MAX_XPATH] = {0,};
+    char *value = calloc(1, MAX_UCI_PATH);
+    char *ip = NULL;
     int rc;
 
-    sprintf(xpath, xpath_network_type_format, name);
-    rc = sr_set_item_str(session,
-                         xpath,
-                         default_interface_type,
-                         SR_EDIT_DEFAULT);
-    SR_CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
+    rc = uci_load(pctx->uctx, "network", &package);
+    UCI_CHECK_RET(rc, error, "uci_load %s error", "network");
 
-    for (size_t i = 0; i < n_mappings; i++) {
+    uci_foreach_element(&package->sections, e) {
+        s = uci_to_section(e);
+        char *type = s->type;
+        char *name = s->e.name;
 
-        char *uci_val = calloc(1, MAX_UCI_PATH);
+        if (strcmp("interface", type) == 0) {
+            bool ipv6 = false;
+            bool dhcp = false;
+            char *interface = ipv6 ? "6" : "4";
+            /* parse the interface, check IP type
+             * IPv4 -> static, dhcp; IPv6 -> dhcpv6 */
 
-        /* get ip */
-        snprintf(ucipath, MAX_UCI_PATH, table_sr_uci[i].ucipath, name);
-        rc = get_uci_item(pctx->uctx, ucipath, &uci_val);
+            INF_MSG("get proto type");
+            snprintf(ucipath, MAX_UCI_PATH, "network.%s.proto", name);
+            INF("ucipath %s", ucipath);
+            rc = get_uci_item(pctx->uctx, ucipath, &value);
+            UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
+            if (0 == strncmp("dhcpv6", value, strlen(value))) ipv6 = true;
+            if (0 == strncmp("dhcp", value, strlen("dhcp"))) dhcp = true;
 
-        /* Find interface name and ip. */
-        if (strstr(table_sr_uci[i].xpath, "address")) {
-            if (UCI_ERR_NOTFOUND == rc) {
-                rc = SR_ERR_OK;
-                continue;
-            }
+            INF_MSG("get mtu");
+            snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
+            rc = get_uci_item(pctx->uctx, ucipath, &value);
+            if (rc != UCI_OK) strcpy(value, "1500");
+            snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/mtu", name, interface);
+            rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
 
-            sprintf(xpath, table_sr_uci[i].xpath, name, uci_val);
-            uci_val = strdup(table_sr_uci[i].default_value);
+            INF_MSG("get enabled status");
+            snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
+            rc = get_uci_item(pctx->uctx, ucipath, &value);
+            if (rc != UCI_OK) strcpy(value, "true");
+            snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/enabled", name, interface);
+            rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
 
-        } else {                /* Only need ip. */
-           if (UCI_OK != rc) {
-                uci_val = strdup(table_sr_uci[i].default_value);
-                INF("Using default %s", uci_val);
-                if (!strcmp("", uci_val)) {
-                    INF("No default %s", "continue!");
-                    rc = SR_ERR_OK;
-                    continue;
+            if (!dhcp) {
+                INF_MSG("get ipaddr");
+                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
+                rc = get_uci_item(pctx->uctx, ucipath, &value);
+                if (rc != UCI_OK) strcpy(value, "192.168.1.1");
+                ip = strdup(value);
+
+                INF_MSG("get netmask");
+                /* check if netmask exists, if not use prefix-length */
+                snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
+                rc = get_uci_item(pctx->uctx, ucipath, &value);
+                if (rc != UCI_OK) {
+                    snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/netmask", name, interface, ip);
+                    rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
                 }
+
+                INF_MSG("get ipassign");
+                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sassign", interface, name);
+                rc = get_uci_item(pctx->uctx, ucipath, &value);
+                if (rc != UCI_OK) ipv6 ? strcpy(value, "64") : strcpy(value, "24");
+                snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length", name, interface, ip);
+                rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
             }
-            sprintf(xpath, table_sr_uci[i].xpath, name);
-        }
 
-        rc = sr_set_item_str(session,
-                             xpath,
-                             uci_val,
-                             SR_EDIT_DEFAULT);
-        INF("%s: %s\t:%s", sr_strerror(rc), xpath, uci_val);
-        rc = SR_ERR_OK;
+            sprintf(xpath, xpath_network_type_format, name);
+            rc = sr_set_item_str(pctx->startup_session, xpath, default_interface_type, SR_EDIT_DEFAULT);
+            SR_CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
 
-        free(uci_val);
-    }
-
-  error:
-    return rc;
-}
-
-static int get_uci_interface_ifnames(char *ifnames_line, struct interface *interface)
-{
-    char *token_ptr;
-    char delimiters[] = { ' ', '\t'};
-
-    token_ptr = strtok(ifnames_line, delimiters);
-    while(token_ptr != NULL && interface->ifname_count < MAX_INTERFACES) {
-        strcpy(interface->ifname[interface->ifname_count], token_ptr);
-        token_ptr = strtok(NULL, delimiters);
-        interface->ifname_count++;
-    }
-
-    return 0;
-}
-
-static int
-get_uci_interfaces(struct plugin_ctx *pctx)
-{
-    struct uci_element *e;
-    struct uci_section *s;
-    struct uci_package *package = NULL;
-    int rc;
-
-    rc = uci_load(pctx->uctx, "network", &package);
-
-    uci_foreach_element(&package->sections, e) {
-        s = uci_to_section(e);
-        char *type = s->type;
-        char *name = s->e.name;
-
-        if (strcmp("interface", type) == 0) {
-            strcpy(pctx->interface_names[pctx->interface_count], name);
-            struct uci_option *o = uci_lookup_option(pctx->uctx, s, "ifname");
-            strcpy(pctx->interfaces[pctx->interface_count].name, name);
-            get_uci_interface_ifnames(o->v.string, &pctx->interfaces[pctx->interface_count]);
-
-            pctx->interface_count++;
+            if (ip) free(ip);
+            ip = NULL;
         }
     }
 
+    rc = sr_commit(pctx->startup_session);
+    SR_CHECK_RET(rc, error, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
+
+error:
     if (package) uci_unload(pctx->uctx, package);
-
-    return rc;
-}
-
-/* Read current UCI network configuration into sysrepo datastore. */
-static int
-init_interfaces(struct plugin_ctx *pctx, sr_session_ctx_t *session)
-{
-    struct uci_element *e;
-    struct uci_section *s;
-    struct uci_package *package = NULL;
-    int rc;
-
-    rc = uci_load(pctx->uctx, "network", &package);
-
-    uci_foreach_element(&package->sections, e) {
-        s = uci_to_section(e);
-        char *type = s->type;
-        char *name = s->e.name;
-
-        if (strcmp("interface", type) == 0) {
-            rc = add_interface(pctx, session, name);
-            SR_CHECK_RET(rc, exit, "Couldn't add interface %s: %s", name, sr_strerror(rc));
-        }
-    }
-
-    rc = sr_commit(session);
-    SR_CHECK_RET(rc, exit, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
-
-  exit:
-    if (package) uci_unload(pctx->uctx, package);
+    free(value);
+    if (ip) free(ip);
     return rc;
 }
 
@@ -378,51 +335,96 @@ restart_network(int wait_time)
     }
 }
 
-static int
-module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+static void
+print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val) {
+    switch(op) {
+    case SR_OP_CREATED:
+        if (NULL != new_val) {
+           printf("CREATED: ");
+           sr_print_val(new_val);
+        }
+        break;
+    case SR_OP_DELETED:
+        if (NULL != old_val) {
+           printf("DELETED: ");
+           sr_print_val(old_val);
+        }
+    break;
+    case SR_OP_MODIFIED:
+        if (NULL != old_val && NULL != new_val) {
+           printf("MODIFIED: ");
+           printf("old value ");
+           sr_print_val(old_val);
+           printf("new value ");
+           sr_print_val(new_val);
+        }
+    break;
+    case SR_OP_MOVED:
+        if (NULL != new_val) {
+            printf("MOVED: %s after %s", new_val->xpath, NULL != old_val ? old_val->xpath : NULL);
+        }
+    break;
+    }
+}
+
+static int parse_change(sr_session_ctx_t *session, struct plugin_ctx *pctx, const char *module_name, sr_notif_event_t event)
 {
-    struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
-    sr_change_iter_t *it = NULL;
+    int rc = SR_ERR_OK;
     sr_change_oper_t oper;
+    sr_change_iter_t *it = NULL;
     sr_val_t *old_value = NULL;
     sr_val_t *new_value = NULL;
-    char change_path[MAX_XPATH] = {0,};
-    int rc = SR_ERR_OK;
+    char xpath[256] = {0,};
 
-    /* Cover other events: ABORT */
-    if (SR_EV_APPLY == event) {
-        INF("\n\n ========== CONFIG HAS CHANGED, CURRENT RUNNING CONFIG: %s ==========\n\n", module_name);
-        rc = sr_copy_config(pctx->startup_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
-        /* print_current_config(session, module_name); */
-    } else {
-        INF("Event %d", event);
+    snprintf(xpath, 256, "/%s:*", module_name);
+
+    rc = sr_get_changes_iter(session, xpath, &it);
+    if (SR_ERR_OK != rc) {
+        printf("Get changes iter failed for xpath %s", xpath);
+        goto error;
     }
 
-    snprintf(change_path, MAX_XPATH, "/%s:*", module_name);
-
-    rc = sr_get_changes_iter(session, change_path , &it);
-    SR_CHECK_RET(rc, error, "[%s] Get changes iter failed for xpath %s", sr_strerror(rc), change_path);
-
-    while (SR_ERR_OK == (rc = sr_get_change_next(session, it,
-                &oper, &old_value, &new_value))) {
+    while (SR_ERR_OK == sr_get_change_next(session, it, &oper, &old_value, &new_value)) {
+        print_change(oper, old_value, new_value);
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
             rc = config_store_to_uci(pctx, new_value);
         }
-
         sr_free_val(old_value);
         sr_free_val(new_value);
-    }
-    INF_MSG("\n\n ========== END OF CHANGES =======================================\n\n");
-
-    if (SR_EV_VERIFY == event) {
-             restart_network(2);
+        CHECK_RET(rc, error, "failed to add operation: %s", sr_strerror(rc));
     }
 
-    sr_free_change_iter(it);
+error:
+    if (NULL != it) {
+        sr_free_change_iter(it);
+    }
+    return rc;
+}
 
-    return SR_ERR_OK;
+static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+{
+    int rc = SR_ERR_OK;
+    struct plugin_ctx *pctx = (struct plugin_ctx*) private_ctx;
+    INF("%s configuration has changed.", YANG_MODEL);
 
-  error:
+    /* copy ietf-sytem running to startup */
+    if (SR_EV_APPLY == event) {
+        /* copy running datastore to startup */
+
+        rc = sr_copy_config(pctx->startup_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
+        if (SR_ERR_OK != rc) {
+            WRN_MSG("Failed to copy running datastore to startup");
+            /* TODO handle this error */
+            return rc;
+        }
+        restart_network(2);
+        return SR_ERR_OK;
+    }
+
+    rc = parse_change(session, pctx, module_name, event);
+    CHECK_RET(rc, error, "failed to apply sysrepo: %s", sr_strerror(rc));
+
+error:
     return rc;
 }
 
@@ -588,8 +590,8 @@ sync_datastores(struct plugin_ctx *ctx)
 
     if (0 == st.st_size) {
         /* parse uci config */
-        rc = init_interfaces(ctx, ctx->startup_session);
         INF_MSG("copy uci data to sysrepo");
+        rc = parse_network_config(ctx);
         SR_CHECK_RET(rc, error, "failed to apply uci data to sysrepo: %s", sr_strerror(rc));
     } else {
         /* copy the sysrepo startup datastore to uci */
@@ -607,7 +609,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     int rc = SR_ERR_OK;
     struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
 
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
 
     /* Allocate UCI context for uci files. */
     ctx->uctx = uci_alloc_context();
@@ -629,12 +631,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     rc = sync_datastores(ctx);
     SR_CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
 
-    rc= get_uci_interfaces(ctx);
-    SR_CHECK_RET(rc, error, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
-    /* rc = sr_copy_config(ctx->startup_session, YANG_MODEL, SR_DS_STARTUP, SR_DS_RUNNING); */
-    /* INF("%s", sr_strerror(rc)); */
-
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream");
+    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
@@ -645,7 +642,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    SR_SUBSCR_CTX_REUSE, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
-    INF("sr_plugin_init_cb for sysrepo-plugin-dt-terastream %s", sr_strerror(rc));
+    INF("sr_plugin_init_cb for sysrepo-plugin-dt-network %s", sr_strerror(rc));
 
     /* Operational data handling. */
     INF_MSG("Subscribing to operational data");
@@ -656,19 +653,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
-    for (size_t i = 0; i < ctx->interface_count; i++) {
-      INF("[%zu/%zu] %s", i+1, ctx->interface_count, ctx->interface_names[i]);
-    }
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-terastream finished.");
-
-    INF("Interfaces %zu", ctx->interface_count);
-    for (size_t i = 0; i < ctx->interface_count; i++) {
-        struct interface iface = ctx->interfaces[i];
-        INF("=== %zu ---- %s [%zu] ===", i, iface.name, iface.ifname_count);
-        for (size_t j = 0; j < iface.ifname_count; j++) {
-            INF("\t[%zu] %s", j, iface.ifname[j]);
-        }
-    }
     return SR_ERR_OK;
 
   error:

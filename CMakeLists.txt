@@ -2,14 +2,14 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules/")
 set(PLUGIN 0 CACHE BOOL "Build a plugin.")
 
-PROJECT(sysrepo-plugin-dt-terastream)
+PROJECT(sysrepo-plugin-dt-network)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wall")
 
 set(SOURCES
-	src/terastream.c
+  src/terastream.c
   src/network.c
   src/adiag_functions.c)
 
