@@ -71,6 +71,24 @@ static int set_uci_item(struct uci_context *uctx, char *ucipath, char *value);
 /* Get value from UCI configuration given ucipath and result holder. */
 static int get_uci_item(struct uci_context *uctx, char *ucipath, char **value);
 
+/* get UCI boolean value */
+static bool parse_uci_bool(char *value) {
+
+	if (0 == strncmp("1", value, strlen(value))) {
+		return true;
+	} else if (0 == strncmp("yes", value, strlen(value))) {
+		return true;
+	} else if (0 == strncmp("on", value, strlen(value))) {
+		return true;
+	} else if (0 == strncmp("true", value, strlen(value))) {
+		return true;
+	} else if (0 == strncmp("enabled", value, strlen(value))) {
+		return true;
+	} else {
+		return true;
+	}
+};
+
 static bool
 val_has_data(sr_type_t type) {
     /* types containing some data */
@@ -265,7 +283,7 @@ parse_network_config(struct plugin_ctx *pctx)
 
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
             rc = get_uci_item(pctx->uctx, ucipath, &value);
-            if (rc != UCI_OK) strcpy(value, "true");
+            if (rc != UCI_OK) parse_uci_bool(value) ? strcpy(value, "true") : strcpy(value, "false");
             snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/enabled", name, interface);
             rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
 
