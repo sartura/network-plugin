@@ -26,15 +26,15 @@ typedef struct sr_uci_mapping {
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] =
 {
-    { "192.168.1.1", "network.%s.ipaddr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/ip" },
+    { "", "network.%s.ipaddr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/ip" },
     { "", "network.%s.ip6addr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/ip" },
     { "1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu" },
     { "1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
-    { "true", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled" },
-    { "true", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled" },
+    { "true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled" },
+    { "true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled" },
     { "24", "network.%s.ip4assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
     { "64", "network.%s.ip6assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
-    { "", "network.%s.ip4assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask" },
+    { "", "network.%s.netmask", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask" },
 };
 
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
@@ -95,36 +95,32 @@ val_has_data(sr_type_t type) {
     else return false;
 }
 
-static char *
-get_key_value(char *orig_xpath, int n)
+char *get_key_value(char *orig_xpath, int n)
 {
-  char *key = NULL, *node = NULL, *xpath = NULL, *val = NULL;
-  sr_xpath_ctx_t state = {0,0,0,0};
+    char *key = NULL, *node = NULL;
+    sr_xpath_ctx_t state = {0, 0, 0, 0};
+    int counter = 0;
 
-  xpath = strdup(orig_xpath);
-  node = sr_xpath_next_node(xpath, &state);
-  if (NULL == node) {
-    goto error;
-  }
-  int counter = 0;
-  while(true) {
-    key = sr_xpath_next_key_name(NULL, &state);
-    if (NULL != key) {
-      val = sr_xpath_next_key_value(NULL, &state);
-      if (counter++ == n) break;
-      /* break; */
-    }
-    node = sr_xpath_next_node(NULL, &state);
+    node = sr_xpath_next_node(orig_xpath, &state);
     if (NULL == node) {
-      break;
+        goto error;
     }
-  }
+    while (true) {
+        key = sr_xpath_next_key_name(NULL, &state);
+        if (NULL != key) {
+            if (counter++ != n) continue;
+            key = strdup(sr_xpath_next_key_value(NULL, &state));
+            break;
+        }
+        node = sr_xpath_next_node(NULL, &state);
+        if (NULL == node) {
+            break;
+        }
+    }
 
- error:
-  if (NULL != xpath) {
-    free(xpath);
-  }
-  return key ? strdup(val) : NULL;
+error:
+    sr_xpath_recover(&state);
+    return key;
 }
 
 static int
@@ -254,22 +250,19 @@ parse_network_config(struct plugin_ctx *pctx)
             /* parse the interface, check IP type
              * IPv4 -> static, dhcp; IPv6 -> dhcpv6 */
 
-            INF_MSG("get proto type");
+            INF("processing interface %s", name);
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.proto", name);
-            INF("ucipath %s", ucipath);
             rc = get_uci_item(pctx->uctx, ucipath, &value);
             UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
             if (0 == strncmp("dhcpv6", value, strlen(value))) ipv6 = true;
             if (0 == strncmp("dhcp", value, strlen("dhcp"))) dhcp = true;
 
-            INF_MSG("get mtu");
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
             rc = get_uci_item(pctx->uctx, ucipath, &value);
             if (rc != UCI_OK) strcpy(value, "1500");
             snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/mtu", name, interface);
             rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
 
-            INF_MSG("get enabled status");
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
             rc = get_uci_item(pctx->uctx, ucipath, &value);
             if (rc != UCI_OK) strcpy(value, "true");
@@ -277,13 +270,11 @@ parse_network_config(struct plugin_ctx *pctx)
             rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
 
             if (!dhcp) {
-                INF_MSG("get ipaddr");
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
                 rc = get_uci_item(pctx->uctx, ucipath, &value);
-                if (rc != UCI_OK) strcpy(value, "192.168.1.1");
+                UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
                 ip = strdup(value);
 
-                INF_MSG("get netmask");
                 /* check if netmask exists, if not use prefix-length */
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
                 rc = get_uci_item(pctx->uctx, ucipath, &value);
@@ -292,7 +283,6 @@ parse_network_config(struct plugin_ctx *pctx)
                     rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
                 }
 
-                INF_MSG("get ipassign");
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sassign", interface, name);
                 rc = get_uci_item(pctx->uctx, ucipath, &value);
                 if (rc != UCI_OK) ipv6 ? strcpy(value, "64") : strcpy(value, "24");
@@ -309,6 +299,7 @@ parse_network_config(struct plugin_ctx *pctx)
         }
     }
 
+    INF_MSG("commit the sysrepo changes");
     rc = sr_commit(pctx->startup_session);
     SR_CHECK_RET(rc, error, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
