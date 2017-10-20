@@ -303,16 +303,16 @@ parse_network_config(struct plugin_ctx *pctx)
                 /* check if netmask exists, if not use prefix-length */
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
                 rc = get_uci_item(pctx->uctx, ucipath, &value);
-                if (rc != UCI_OK) {
+                if (rc == UCI_OK) {
                     snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/netmask", name, interface, ip);
                     rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
+                } else {
+                    snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
+                    rc = get_uci_item(pctx->uctx, ucipath, &value);
+                    if (rc != UCI_OK) ipv6 ? strcpy(value, "64") : strcpy(value, "24");
+                    snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length", name, interface, ip);
+                    rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
                 }
-
-                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
-                rc = get_uci_item(pctx->uctx, ucipath, &value);
-                if (rc != UCI_OK) ipv6 ? strcpy(value, "64") : strcpy(value, "24");
-                snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length", name, interface, ip);
-                rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
             }
 
             sprintf(xpath, xpath_network_type_format, name);
