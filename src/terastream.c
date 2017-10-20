@@ -74,19 +74,19 @@ static int get_uci_item(struct uci_context *uctx, char *ucipath, char **value);
 /* get UCI boolean value */
 static bool parse_uci_bool(char *value) {
 
-	if (0 == strncmp("1", value, strlen(value))) {
-		return true;
-	} else if (0 == strncmp("yes", value, strlen(value))) {
-		return true;
-	} else if (0 == strncmp("on", value, strlen(value))) {
-		return true;
-	} else if (0 == strncmp("true", value, strlen(value))) {
-		return true;
-	} else if (0 == strncmp("enabled", value, strlen(value))) {
-		return true;
-	} else {
-		return true;
-	}
+    if (0 == strncmp("1", value, strlen(value))) {
+        return true;
+    } else if (0 == strncmp("yes", value, strlen(value))) {
+        return true;
+    } else if (0 == strncmp("on", value, strlen(value))) {
+        return true;
+    } else if (0 == strncmp("true", value, strlen(value))) {
+        return true;
+    } else if (0 == strncmp("enabled", value, strlen(value))) {
+        return true;
+    } else {
+        return true;
+    }
 };
 
 static bool
@@ -197,10 +197,11 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
     char xpath[MAX_XPATH];
     int rc = SR_ERR_OK;
     char *device_name = get_key_value(value->xpath, 0);
+    char *ip = get_key_value(value->xpath, 1);
 
     if (!device_name) goto exit;
 
-    sprintf(xpath, mapping->xpath, device_name);
+    sprintf(xpath, mapping->xpath, device_name, ip);
 
     val_str = sr_val_to_str(value);
     if (!val_str) {
@@ -209,14 +210,20 @@ config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t 
         goto exit;
     }
 
+    if (0 != strncmp(value->xpath, xpath, strlen(xpath))) {
+        goto exit;
+    }
+    INF("SET %s -> %s", xpath, val_str);
+
     sprintf(ucipath, mapping->ucipath, device_name);
     rc = set_uci_item(pctx->uctx, ucipath, val_str);
     UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
 
-    free(val_str);
-    free(device_name);
-
 exit:
+    if (val_str) free(val_str);
+    if (device_name) free(device_name);
+    if (ip) free(ip);
+
     return rc;
 }
 
