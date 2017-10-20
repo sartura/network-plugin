@@ -32,8 +32,8 @@ static sr_uci_link table_sr_uci[] =
     { "1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu" },
     { "true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled" },
     { "true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled" },
-    { "24", "network.%s.ip4assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
-    { "64", "network.%s.ip6assign", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
+    { "24", "network.%s.ip4prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length" },
+    { "64", "network.%s.ip6prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length" },
     { "", "network.%s.netmask", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask" },
 };
 
@@ -308,7 +308,7 @@ parse_network_config(struct plugin_ctx *pctx)
                     rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
                 }
 
-                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sassign", interface, name);
+                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
                 rc = get_uci_item(pctx->uctx, ucipath, &value);
                 if (rc != UCI_OK) ipv6 ? strcpy(value, "64") : strcpy(value, "24");
                 snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length", name, interface, ip);
