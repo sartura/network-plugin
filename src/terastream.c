@@ -56,6 +56,9 @@ static oper_mapping table_interface_status[] = {
   { "mtu", network_operational_mtu },
   { "ip", network_operational_ip },
   { "neighbor", network_operational_neigh },
+};
+
+static oper_mapping table_sfp_status[] = {
   { "rx-pwr", sfp_rx_pwr },
   { "tx-pwr", sfp_tx_pwr },
   { "voltage", sfp_voltage },
@@ -187,6 +190,83 @@ exit:
   free(set_path);
 
   return rc;
+}
+
+void interfaces_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+{
+    struct plugin_ctx *pctx = req->priv;
+	struct json_object *r = NULL;
+	char *json_result = NULL;
+
+	if (msg) {
+		json_result = blobmsg_format_json(msg, true);
+		r = json_tokener_parse(json_result);
+	} else {
+		goto cleanup;
+	}
+
+	/* get array size */
+	pctx->interface_count = 0;
+	json_object_object_foreach(r, key, val) {
+		if (NULL != key && NULL != val) {
+            strcpy(pctx->interface_names[pctx->interface_count], key);
+			pctx->interface_count++;
+		}
+	}
+
+cleanup:
+	if (NULL != r) {
+		json_object_put(r);
+	}
+	if (NULL != json_result) {
+		free(json_result);
+	}
+	return;
+}
+
+static int
+get_oper_interfaces(struct plugin_ctx *pctx)
+{
+	int rc = SR_ERR_OK, i;
+	uint32_t id = 0;
+	struct blob_buf buf = {0};
+	int u_rc = UBUS_STATUS_OK;
+
+	/* get array size */
+	for(i = 0; i < pctx->interface_count; i++) {
+		INF("name -> %s", pctx->interface_names[i]);
+		free(pctx->interface_names[i]);
+	}
+	pctx->interface_count = 0;
+
+	struct ubus_context *u_ctx = ubus_connect(NULL);
+	if (u_ctx == NULL) {
+		ERR_MSG("Could not connect to ubus");
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	blob_buf_init(&buf, 0);
+	u_rc = ubus_lookup_id(u_ctx, "network.device", &id);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object asterisk\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	u_rc = ubus_invoke(u_ctx, id, "status", buf.head, interfaces_ubus_cb, pctx, 0);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object asterisk\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+cleanup:
+	if (NULL != u_ctx) {
+		ubus_free(u_ctx);
+		blob_buf_free(&buf);
+	}
+	return rc;
 }
 
 static int
@@ -506,9 +586,67 @@ sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
     return rc;
 }
 
+static int
+data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+{
+    struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
+    (void) pctx;
+    size_t n_mappings;
+    int rc = SR_ERR_OK;
+
+    rc= get_oper_interfaces(pctx);
+    SR_CHECK_RET(rc, exit, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
+
+    struct list_head list = LIST_HEAD_INIT(list);
+    oper_func func;
+    n_mappings = ARR_SIZE(table_interface_status);
+
+    network_operational_start();
+
+    for (size_t i = 0; i < n_mappings; i++) {
+        func = table_interface_status[i].op_func;
+
+        for (size_t j = 0; j < pctx->interface_count; j++) {
+          rc = func(pctx->interface_names[j], &list);
+          /* INF("%s", sr_strerror((rc))); */
+        }
+    }
+
+    size_t cnt = 0;
+    cnt = list_size(&list);
+    INF("Allocating %zu values.", cnt);
+
+    struct value_node *vn, *q;
+    size_t j = 0;
+    rc = sr_new_values(cnt, values);
+    INF("%s", sr_strerror(rc));
+
+    list_for_each_entry_safe(vn, q, &list, head) {
+        rc = sr_dup_val_data(&(*values)[j], vn->value);
+        SR_CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
+        j += 1;
+        sr_free_val(vn->value);
+        list_del(&vn->head);
+        free(vn);
+    }
+
+    *values_cnt = cnt;
+
+    list_del(&list);
+
+    if (*values_cnt > 0) {
+        INF("Debug sysrepo values printout: %zu", *values_cnt);
+        for (size_t i = 0; i < *values_cnt; i++){
+                     sr_print_val(&(*values)[i]);
+        }
+    }
+
+  exit:
+    return rc;
+}
 
 static int
-data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+data_provider_hgw_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
 {
     char *node;
     struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
@@ -516,72 +654,28 @@ data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, vo
     size_t n_mappings;
     int rc = SR_ERR_OK;
 
-    /* INF("%s", cb_xpath); */
+	INF("node name eq provisioning %s", cb_xpath);
+    n_mappings = ARR_SIZE(table_operational);
+    INF("Diagnostics for %s %zu", cb_xpath, n_mappings);
 
-    if (sr_xpath_node_name_eq(cb_xpath, "provisioning:hgw-diagnostics")) {
-        n_mappings = ARR_SIZE(table_operational);
-        INF("Diagnostics for %s %zu", cb_xpath, n_mappings);
+    adiag_func func;
+    *values_cnt = n_mappings;
+    rc = sr_new_values(*values_cnt, values);
+    SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
 
-        adiag_func func;
-        *values_cnt = n_mappings;
-        rc = sr_new_values(*values_cnt, values);
-        SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
+    for (size_t i = 0; i < *values_cnt; i++) {
+        node = table_operational[i].node;
+        func = table_operational[i].op_func;
+        INF("\tDiagnostics for: %s", node);
 
-        for (size_t i = 0; i < *values_cnt; i++) {
-            node = table_operational[i].node;
-            func = table_operational[i].op_func;
-            INF("\tDiagnostics for: %s", node);
-
-            rc = func(&(*values)[i]);
-            /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
-        }
-
-    }
-
-    struct list_head list = LIST_HEAD_INIT(list);
-    if (sr_xpath_node_name_eq(cb_xpath, "interface")) {
-        oper_func func;
-        n_mappings = ARR_SIZE(table_interface_status);
-
-        network_operational_start();
-
-        for (size_t i = 0; i < n_mappings; i++) {
-            node = table_interface_status[i].node;
-            func = table_interface_status[i].op_func;
-
-            for (size_t j = 0; j < pctx->interface_count; j++) {
-              rc = func(pctx->interface_names[j], &list);
-              /* INF("%s", sr_strerror((rc))); */
-            }
-        }
-
-        size_t cnt = 0;
-        cnt = list_size(&list);
-        INF("Allocating %zu values.", cnt);
-
-        struct value_node *vn, *q;
-        size_t j = 0;
-        rc = sr_new_values(cnt, values);
-        INF("%s", sr_strerror(rc));
-
-        list_for_each_entry_safe(vn, q, &list, head) {
-            rc = sr_dup_val_data(&(*values)[j], vn->value);
-            SR_CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
-            j += 1;
-            sr_free_val(vn->value);
-            list_del(&vn->head);
-            free(vn);
-        }
-
-        *values_cnt = cnt;
-
-        list_del(&list);
+        rc = func(&(*values)[i]);
+        /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
     }
 
     if (*values_cnt > 0) {
         INF("Debug sysrepo values printout: %zu", *values_cnt);
         for (size_t i = 0; i < *values_cnt; i++){
-                     sr_print_val(&(*values)[i]);
+                     //sr_print_val(&(*values)[i]);
         }
     }
 
@@ -626,6 +720,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     int rc = SR_ERR_OK;
     struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
+	ctx->interface_count = 0;
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
 
@@ -649,14 +744,17 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     rc = sync_datastores(ctx);
     SR_CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
 
-    INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
+    //rc= get_oper_interfaces(ctx);
+    //SR_CHECK_RET(rc, error, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
+
+	INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
                                     0, SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
     /* Operational data handling. */
     INF_MSG("Subscribing to diagnostics");
-    rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_cb, *private_ctx,
+    rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_hgw_cb, *private_ctx,
                                    SR_SUBSCR_CTX_REUSE, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
@@ -666,7 +764,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     INF_MSG("Subscribing to operational data");
     rc = sr_dp_get_items_subscribe(session,
                                    "/ietf-interfaces:interfaces-state",
-                                   data_provider_cb, *private_ctx,
+                                   data_provider_interface_cb, *private_ctx,
                                    SR_SUBSCR_CTX_REUSE, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
@@ -675,7 +773,9 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
   error:
     SRP_LOG_ERR("Plugin initialization failed: %s", sr_strerror(rc));
-    sr_unsubscribe(session, ctx->subscription);
+	if (ctx->subscription) {
+		sr_unsubscribe(session, ctx->subscription);
+	}
     free(ctx);
     return rc;
 }

@@ -7,7 +7,7 @@
 
 #define MAX_UCI_PATH 64
 #define MAX_XPATH 256
-#define MAX_INTERFACES 10
+#define MAX_INTERFACES 20
 #define MAX_INTERFACE_NAME 20
 
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
