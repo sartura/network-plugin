@@ -340,7 +340,7 @@ network_operational_mtu(char *interface_name, struct list_head *list, ubus_data 
 	return SR_ERR_OK;
 }
 
-	static void
+static void
 ip_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	const char *ip;
@@ -355,41 +355,66 @@ ip_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 	}
 
     json_object_object_get_ex(obj, "ipv4-address", &t);
-    if (!t) {
-        return;
+    if (!t) return;
+
+	int j;
+	const int N = json_object_array_length(t);
+	for (j = 0; j < N; j++) {
+		t = json_object_array_get_idx(t, j);
+		if (!t) continue;
+
+		/* Get ip and mask (prefix length) from address. */
+		enum json_type type;
+		json_object_object_foreach(t, key, val) {
+		    (void) key;
+		    type = json_object_get_type(val);
+		    if (type == json_type_string) {
+		        ip = json_object_get_string(val);
+		    } else if (json_type_int) {
+		        prefix_length = (uint8_t) json_object_get_int(val);
+		    }
+		}
+
+		const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
+		sprintf(xpath, fmt, interface_name, ip);
+		list_value = calloc(1, sizeof *list_value);
+		sr_new_values(1, &list_value->value);
+		sr_val_set_xpath(list_value->value, xpath);
+		list_value->value->type = SR_UINT8_T;
+		list_value->value->data.uint8_val = prefix_length;
+		list_add(&list_value->head, list);
     }
-    /* ubus_result = json_object_get_string(t); */
-    /* INF("%s", ubus_result); */
 
-    t = json_object_array_get_idx(t, 0);
-    if (!t) {
-        INF_MSG("Missing ip address.");
-        return;
+    json_object_object_get_ex(obj, "ipv6-address", &t);
+    if (!t) return;
+
+	const int N6 = json_object_array_length(t);
+	for (j = 0; j < N6; j++) {
+		t = json_object_array_get_idx(t, j);
+		if (!t) continue;
+
+		/* Get ip and mask (prefix length) from address. */
+		enum json_type type;
+		json_object_object_foreach(t, key, val) {
+		    (void) key;
+		    type = json_object_get_type(val);
+		    if (type == json_type_string) {
+		        ip = json_object_get_string(val);
+		    } else if (json_type_int) {
+		        prefix_length = (uint8_t) json_object_get_int(val);
+		    }
+		}
+
+		const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length";
+		sprintf(xpath, fmt, interface_name, ip);
+		list_value = calloc(1, sizeof *list_value);
+		sr_new_values(1, &list_value->value);
+		sr_val_set_xpath(list_value->value, xpath);
+		list_value->value->type = SR_UINT8_T;
+		list_value->value->data.uint8_val = prefix_length;
+		list_add(&list_value->head, list);
     }
 
-    /* Get ip and mask (prefix length) from address. */
-    enum json_type type;
-    json_object_object_foreach(t, key, val) {
-        (void) key;
-        type = json_object_get_type(val);
-        if (type == json_type_string) {
-            ip = json_object_get_string(val);
-        } else if (json_type_int) {
-            prefix_length = (uint8_t) json_object_get_int(val);
-        }
-    }
-
-    const char *fmt =
-        "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
-
-    sprintf(xpath, fmt, interface_name, ip);
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT8_T;
-    list_value->value->data.uint8_val = prefix_length;
-
-    list_add(&list_value->head, list);
 }
 
 int
@@ -417,7 +442,7 @@ neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
     json_object_object_get_ex(u_data.i, "table", &table);
 
     /* Get ip and mask (prefix length) from address. */
-    const int N =  	json_object_array_length(table);
+    const int N = json_object_array_length(table);
     struct value_node *list_value;
     for (int i = 0; i < N; i++) {
         json_object *ip_obj, *mac_obj;
