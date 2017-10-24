@@ -15,8 +15,7 @@ struct value_node {
 
 typedef void (*ubus_val_to_sr_val)(json_object *, char *, struct list_head *list);
 
-typedef int (*oper_func)(char *, struct list_head *);
-
+typedef int (*oper_func)(char *, struct list_head *, struct json_object *);
 
 typedef struct oper_mapping {
   char *node;
@@ -27,16 +26,16 @@ typedef struct oper_mapping {
 int network_operational_start();
 void network_operational_stop();
 
-int network_operational_operstatus(char *, struct list_head *);
-int network_operational_mac(char *, struct list_head *);
-int network_operational_rx(char *, struct list_head *);
-int network_operational_tx(char *, struct list_head *);
-int network_operational_mtu(char *, struct list_head *);
-int network_operational_ip(char *, struct list_head *);
-int network_operational_neigh(char *, struct list_head *);
+int network_operational_operstatus(char *, struct list_head *, struct json_object *);
+int network_operational_mac(char *, struct list_head *, struct json_object *);
+int network_operational_rx(char *, struct list_head *, struct json_object *);
+int network_operational_tx(char *, struct list_head *, struct json_object *);
+int network_operational_mtu(char *, struct list_head *, struct json_object *);
+int network_operational_ip(char *, struct list_head *, struct json_object *);
+int network_operational_neigh(char *, struct list_head *, struct json_object *);
 
-int sfp_rx_pwr(char *, struct list_head *);
-int sfp_tx_pwr(char *, struct list_head *);
-int sfp_current(char *, struct list_head *);
-int sfp_voltage(char *, struct list_head *);
+int sfp_rx_pwr(char *, struct list_head *, struct json_object *);
+int sfp_tx_pwr(char *, struct list_head *, struct json_object *);
+int sfp_current(char *, struct list_head *, struct json_object *);
+int sfp_voltage(char *, struct list_head *, struct json_object *);
 

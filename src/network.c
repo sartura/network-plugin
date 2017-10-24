@@ -87,6 +87,15 @@ ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 }
 
 static int
+execute_base(const char *interface_name, struct list_head *list, struct json_object *obj, ubus_val_to_sr_val function)
+{
+	INF("execute interface name %s", interface_name);
+	function(obj, (char *) interface_name, list);
+	INF_MSG("finished");
+	return SR_ERR_OK;
+}
+
+static int
 ubus_base(const char *ubus_lookup_path,
           struct status_container *msg,
           struct blob_buf *blob)
@@ -120,6 +129,7 @@ ubus_base(const char *ubus_lookup_path,
 static void
 operstatus_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -144,9 +154,12 @@ operstatus_transform(json_object *base, char *interface_name, struct list_head *
 }
 
 int
-network_operational_operstatus(char *interface_name, struct list_head *list)
+network_operational_operstatus(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg = NULL;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, operstatus_transform);
+	}
     make_status_container(&msg, "status", operstatus_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -158,6 +171,7 @@ network_operational_operstatus(char *interface_name, struct list_head *list)
 static void
 mac_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -189,9 +203,12 @@ mac_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_mac(char *interface_name, struct list_head *list)
+network_operational_mac(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg = NULL;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, mac_transform);
+	}
     make_status_container(&msg, "status", mac_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -203,6 +220,7 @@ network_operational_mac(char *interface_name, struct list_head *list)
 static void
 rx_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -233,11 +251,14 @@ rx_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_rx(char *interface_name, struct list_head *list)
+network_operational_rx(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     /* Sets the value in ubus callback. */
 
     struct status_container *msg = NULL;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, rx_transform);
+	}
     make_status_container(&msg, "status", rx_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -249,6 +270,7 @@ network_operational_rx(char *interface_name, struct list_head *list)
 static void
 tx_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -277,11 +299,14 @@ tx_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_tx(char *interface_name, struct list_head *list)
+network_operational_tx(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     /* Sets the value in ubus callback. */
 
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, tx_transform);
+	}
     make_status_container(&msg, "status", tx_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -293,6 +318,7 @@ network_operational_tx(char *interface_name, struct list_head *list)
 static void
 mtu_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -324,9 +350,12 @@ mtu_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_mtu(char *interface_name, struct list_head *list)
+network_operational_mtu(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, mtu_transform);
+	}
     make_status_container(&msg, "status", mtu_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -338,6 +367,7 @@ network_operational_mtu(char *interface_name, struct list_head *list)
 static void
 ip_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     const char *ip;
     uint8_t prefix_length = 0;
     struct json_object *t;
@@ -383,11 +413,14 @@ ip_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_ip(char *interface_name, struct list_head *list)
+network_operational_ip(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     /* Sets the value in ubus callback. */
 
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, ip_transform);
+	}
     make_status_container(&msg, "status", ip_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -400,6 +433,7 @@ network_operational_ip(char *interface_name, struct list_head *list)
 static void
 neigh_transform(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *table, *iter_object;
     /* const char *ubus_result; */
     const char *fmt =
@@ -435,10 +469,14 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_neigh(char *interface_name, struct list_head *list)
+network_operational_neigh(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     /* Sets the value in ubus callback. */
     struct status_container *msg;
+	if (NULL != obj) {
+		//TODO
+		//return execute_base(interface_name, list, obj, neigh_transform);
+	}
     make_status_container(&msg, "arp", neigh_transform, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -450,6 +488,7 @@ network_operational_neigh(char *interface_name, struct list_head *list)
 static void
 sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -485,9 +524,12 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_rx_pwr(char *interface_name, struct list_head *list) {
+int sfp_rx_pwr(char *interface_name, struct list_head *list, struct json_object *obj) {
 
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, sfp_rx_pwr_cb);
+	}
     make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -499,6 +541,7 @@ int sfp_rx_pwr(char *interface_name, struct list_head *list) {
 static void
 sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -531,9 +574,12 @@ sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_tx_pwr(char *interface_name, struct list_head *list)
+int sfp_tx_pwr(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, sfp_tx_pwr_cb);
+	}
     make_status_container(&msg, "get-tx-pwr", sfp_tx_pwr_cb, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -547,6 +593,7 @@ int sfp_tx_pwr(char *interface_name, struct list_head *list)
 static void
 sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -587,9 +634,12 @@ sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
 }
 
 
-int sfp_current(char *interface_name, struct list_head *list)
+int sfp_current(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, sfp_current_cb);
+	}
     make_status_container(&msg, "get-current", sfp_current_cb, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);
@@ -601,6 +651,7 @@ int sfp_current(char *interface_name, struct list_head *list)
 static void
 sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
 {
+	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -637,9 +688,12 @@ sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_voltage(char *interface_name, struct list_head *list)
+int sfp_voltage(char *interface_name, struct list_head *list, struct json_object *obj)
 {
     struct status_container *msg;
+	if (NULL != obj) {
+		return execute_base(interface_name, list, obj, sfp_voltage_cb);
+	}
     make_status_container(&msg, "get-voltage", sfp_voltage_cb, interface_name, list);
     struct blob_buf buf = {0,};
     blob_buf_init(&buf, 0);

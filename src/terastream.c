@@ -204,6 +204,7 @@ void interfaces_ubus_cb(struct ubus_request *req, int type, struct blob_attr *ms
 	} else {
 		goto cleanup;
 	}
+	pctx->data = r;
 
 	/* get array size */
 	pctx->interface_count = 0;
@@ -215,9 +216,6 @@ void interfaces_ubus_cb(struct ubus_request *req, int type, struct blob_attr *ms
 	}
 
 cleanup:
-	if (NULL != r) {
-		json_object_put(r);
-	}
 	if (NULL != json_result) {
 		free(json_result);
 	}
@@ -238,6 +236,7 @@ get_oper_interfaces(struct plugin_ctx *pctx)
 		free(pctx->interface_names[i]);
 	}
 	pctx->interface_count = 0;
+	pctx->data = NULL;
 
 	struct ubus_context *u_ctx = ubus_connect(NULL);
 	if (u_ctx == NULL) {
@@ -594,8 +593,13 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     size_t n_mappings;
     int rc = SR_ERR_OK;
 
+	if (strlen(cb_xpath) > strlen("/ietf-interfaces:interfaces-state")) {
+		return SR_ERR_OK;
+	}
+
     rc= get_oper_interfaces(pctx);
     SR_CHECK_RET(rc, exit, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
+	/* copy json objects from ubus call network.device status to pctx->data */
 
     struct list_head list = LIST_HEAD_INIT(list);
     oper_func func;
@@ -607,10 +611,13 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
         func = table_interface_status[i].op_func;
 
         for (size_t j = 0; j < pctx->interface_count; j++) {
-          rc = func(pctx->interface_names[j], &list);
+          rc = func(pctx->interface_names[j], &list, pctx->data);
           /* INF("%s", sr_strerror((rc))); */
         }
     }
+	if (pctx->data) {
+		json_object_put(pctx->data);
+	}
 
     size_t cnt = 0;
     cnt = list_size(&list);
