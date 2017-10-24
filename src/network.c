@@ -77,16 +77,13 @@ struct json_object *get_json_interface(json_object *obj, char *name) {
 static int
 execute_base(const char *interface_name, struct list_head *list, ubus_data u_data, ubus_val_to_sr_val function)
 {
-	INF("execute interface name %s", interface_name);
 	function(u_data, (char *) interface_name, list);
-	INF_MSG("finished");
 	return SR_ERR_OK;
 }
 
 static void
 operstatus_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
 	struct json_object *t;
 	const char *ubus_result;
 	struct value_node *list_value;
@@ -124,22 +121,18 @@ network_operational_operstatus(char *interface_name, struct list_head *list, ubu
 	static void
 mac_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
 	struct json_object *t;
 	const char *ubus_result;
 	struct value_node *list_value;
 	char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
 	char xpath[MAX_XPATH];
 
-	INF("ubus_result %s", interface_name);
 	t = get_device_interface(u_data.i, u_data.d, interface_name);
 	if (!t) return;
 
 	json_object_object_get_ex(t, "macaddr", &t);
 	if (!t) return;
 	ubus_result = json_object_get_string(t);
-
-	INF("ubus_result %s", ubus_result);
 
 	list_value = calloc(1, sizeof *list_value);
 	sr_new_values(1, &list_value->value);
@@ -164,7 +157,6 @@ network_operational_mac(char *interface_name, struct list_head *list, ubus_data 
 static void
 rx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
 	struct json_object *t, *i;
 	const char *ubus_result;
 	struct value_node *list_value;
@@ -197,7 +189,7 @@ rx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 	sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-discards");
 	sr_val_set_xpath(list_value->value, xpath);
-	list_value->value->type = SR_UINT64_T;
+	list_value->value->type = SR_UINT32_T;
 	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
 	list_add(&list_value->head, list);
 
@@ -208,7 +200,7 @@ rx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 	sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-errors");
 	sr_val_set_xpath(list_value->value, xpath);
-	list_value->value->type = SR_UINT64_T;
+	list_value->value->type = SR_UINT32_T;
 	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
 	list_add(&list_value->head, list);
 
@@ -238,7 +230,6 @@ network_operational_rx(char *interface_name, struct list_head *list, ubus_data u
 static void
 tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
 	struct json_object *t, *i;
 	const char *ubus_result;
 	struct value_node *list_value;
@@ -271,7 +262,7 @@ tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 	sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "in-discards");
 	sr_val_set_xpath(list_value->value, xpath);
-	list_value->value->type = SR_UINT64_T;
+	list_value->value->type = SR_UINT32_T;
 	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
 	list_add(&list_value->head, list);
 
@@ -282,7 +273,7 @@ tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 	sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "in-errors");
 	sr_val_set_xpath(list_value->value, xpath);
-	list_value->value->type = SR_UINT64_T;
+	list_value->value->type = SR_UINT32_T;
 	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
 	list_add(&list_value->head, list);
 }
@@ -302,35 +293,41 @@ network_operational_tx(char *interface_name, struct list_head *list, ubus_data u
 static void
 mtu_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
-	struct json_object *t;
+	struct json_object *t, *i;
 	const char *ubus_result;
 	struct value_node *list_value;
 	const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/mtu";
+	const char *fmt6 = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/mtu";
 	char xpath[MAX_XPATH];
 
-	json_object_object_get_ex(u_data.i,
-			"eth0.1",
-			&t);
-	if (!t) {
-		return;
-	}
-	ubus_result = json_object_to_json_string(t);
+	i = get_device_interface(u_data.i, u_data.d, interface_name);
+	if (!i) return;
 
-	json_object_object_get_ex(t, "mtu", &t);
+	json_object_object_get_ex(i, "mtu", &t);
 	ubus_result = json_object_get_string(t);
 	if (!ubus_result) return;
-
 	list_value = calloc(1, sizeof *list_value);
 	sr_new_values(1, &list_value->value);
 	sprintf(xpath, fmt, interface_name);
 	sr_val_set_xpath(list_value->value, xpath);
-
 	list_value->value->type = SR_UINT16_T;
 	sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
-
 	list_add(&list_value->head, list);
 
+	json_object_object_get_ex(i, "ipv6", &t);
+	ubus_result = json_object_get_string(t);
+	if (ubus_result && 0 == strncmp(ubus_result, "true", strlen(ubus_result))) {
+		json_object_object_get_ex(i, "mtu6", &t);
+		ubus_result = json_object_get_string(t);
+		if (!ubus_result) return;
+		list_value = calloc(1, sizeof *list_value);
+		sr_new_values(1, &list_value->value);
+		sprintf(xpath, fmt6, interface_name);
+		sr_val_set_xpath(list_value->value, xpath);
+		list_value->value->type = SR_UINT32_T;
+		sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
+		list_add(&list_value->head, list);
+	}
 }
 
 	int
@@ -346,7 +343,6 @@ network_operational_mtu(char *interface_name, struct list_head *list, ubus_data 
 	static void
 ip_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
 	const char *ip;
 	uint8_t prefix_length = 0;
 	struct json_object *t;
@@ -412,7 +408,6 @@ network_operational_ip(char *interface_name, struct list_head *list, ubus_data u
 static void
 neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
     struct json_object *table, *iter_object;
     /* const char *ubus_result; */
     const char *fmt =
@@ -462,7 +457,6 @@ network_operational_neigh(char *interface_name, struct list_head *list, ubus_dat
 static void
 sfp_rx_pwr_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -484,7 +478,6 @@ sfp_rx_pwr_cb(ubus_data u_data, char *interface_name, struct list_head *list)
     /* sprintf(xpath, fmt, interface_name); */
     sr_val_set_xpath(list_value->value, fmt);
 
-    INF("%s", ubus_result);
     int len = strlen(remove_quotes(ubus_result));
     char *decresult = (char*)remove_quotes(ubus_result);
     decresult[len-2] = '\0';
@@ -510,7 +503,6 @@ int sfp_rx_pwr(char *interface_name, struct list_head *list, ubus_data u_data) {
 static void
 sfp_tx_pwr_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -557,7 +549,6 @@ int sfp_tx_pwr(char *interface_name, struct list_head *list, ubus_data u_data)
 static void
 sfp_current_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -573,7 +564,6 @@ sfp_current_cb(ubus_data u_data, char *interface_name, struct list_head *list)
     }
 
     ubus_result = json_object_get_string(t);
-    INF("%s", ubus_result);
     if (!ubus_result) return;
 
     list_value = calloc(1, sizeof *list_value);
@@ -597,7 +587,6 @@ sfp_current_cb(ubus_data u_data, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-
 int sfp_current(char *interface_name, struct list_head *list, ubus_data u_data)
 {
 	if (NULL != u_data.d) {
@@ -610,7 +599,6 @@ int sfp_current(char *interface_name, struct list_head *list, ubus_data u_data)
 static void
 sfp_voltage_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
-	INF_MSG("function call");
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
@@ -626,7 +614,6 @@ sfp_voltage_cb(ubus_data u_data, char *interface_name, struct list_head *list)
     }
 
     ubus_result = json_object_get_string(t);
-    INF("%s", ubus_result);
     if (!ubus_result) return;
 
     list_value = calloc(1, sizeof *list_value);
