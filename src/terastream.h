@@ -16,6 +16,9 @@
 typedef struct stored_ubus_data {
 	json_object *i;//ubus call network.interface dump
 	json_object *d;//ubus call network.device status
+	json_object *a;//ubus call router.net arp
+	json_object *n;//ubus call router.net ipv6_neigh
+	json_object *tmp;
 } ubus_data;
 
 struct plugin_ctx {

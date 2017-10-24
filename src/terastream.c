@@ -56,6 +56,7 @@ static oper_mapping table_interface_status[] = {
   { "mtu", network_operational_mtu },
   { "ip", network_operational_ip },
   { "neighbor", network_operational_neigh },
+  { "neighbor6", network_operational_neigh6 },
 };
 
 static oper_mapping table_sfp_status[] = {
@@ -192,7 +193,7 @@ exit:
   return rc;
 }
 
-void interface_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
     struct plugin_ctx *pctx = req->priv;
 	struct json_object *r = NULL;
@@ -204,28 +205,7 @@ void interface_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg
 	} else {
 		goto cleanup;
 	}
-	pctx->u_data.i = r;
-
-cleanup:
-	if (NULL != json_result) {
-		free(json_result);
-	}
-	return;
-}
-
-void device_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
-{
-    struct plugin_ctx *pctx = req->priv;
-	struct json_object *r = NULL;
-	char *json_result = NULL;
-
-	if (msg) {
-		json_result = blobmsg_format_json(msg, true);
-		r = json_tokener_parse(json_result);
-	} else {
-		goto cleanup;
-	}
-	pctx->u_data.d = r;
+	pctx->u_data.tmp = r;
 
 cleanup:
 	if (NULL != json_result) {
@@ -244,6 +224,14 @@ clear_ubus_data(struct plugin_ctx *pctx) {
 	if (pctx->u_data.d) {
 		json_object_put(pctx->u_data.d);
 		pctx->u_data.d = NULL;
+	}
+	if (pctx->u_data.a) {
+		json_object_put(pctx->u_data.a);
+		pctx->u_data.a = NULL;
+	}
+	if (pctx->u_data.n) {
+		json_object_put(pctx->u_data.n);
+		pctx->u_data.n = NULL;
 	}
 }
 
@@ -272,13 +260,13 @@ get_oper_interfaces(struct plugin_ctx *pctx)
 		goto cleanup;
 	}
 
-	u_rc = ubus_invoke(u_ctx, id, "status", buf.head, device_ubus_cb, pctx, 0);
+	u_rc = ubus_invoke(u_ctx, id, "status", buf.head, ubus_cb, pctx, 0);
 	if (UBUS_STATUS_OK != u_rc) {
 		ERR("ubus [%d]: no object status\n", u_rc);
 		rc = SR_ERR_INTERNAL;
 		goto cleanup;
 	}
-
+	pctx->u_data.d = pctx->u_data.tmp;
 	blob_buf_free(&buf);
 
 	blob_buf_init(&buf, 0);
@@ -289,12 +277,48 @@ get_oper_interfaces(struct plugin_ctx *pctx)
 		goto cleanup;
 	}
 
-	u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, interface_ubus_cb, pctx, 0);
+	u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, pctx, 0);
 	if (UBUS_STATUS_OK != u_rc) {
 		ERR("ubus [%d]: no object dump\n", u_rc);
 		rc = SR_ERR_INTERNAL;
 		goto cleanup;
 	}
+	pctx->u_data.i = pctx->u_data.tmp;
+	blob_buf_free(&buf);
+
+	blob_buf_init(&buf, 0);
+	u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object router.net\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, pctx, 0);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object arp\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+	pctx->u_data.a = pctx->u_data.tmp;
+	blob_buf_free(&buf);
+
+	blob_buf_init(&buf, 0);
+	u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object router.net\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, pctx, 0);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object ipv6_neigh\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+	pctx->u_data.n = pctx->u_data.tmp;
+	blob_buf_free(&buf);
 
 cleanup:
 	if (NULL != u_ctx) {

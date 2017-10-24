@@ -19,6 +19,51 @@ remove_quotes(const char *str)
   return unquoted;
 }
 
+static char *
+transform_state(const char *name) {
+	if (0 == strcmp(name, "INCOMPLETE")) {
+		return "incomplete";
+	} else if (0 == strcmp(name, "REACHABLE")) {
+		return "reachable";
+	} else if (0 == strcmp(name, "STALE")) {
+		return "stale";
+	} else if (0 == strcmp(name, "DELAY")) {
+		return "delay";
+	} else if (0 == strcmp(name, "PROBE")) {
+		return "probe";
+	} else {
+		return "";
+	}
+}
+
+bool is_l3_member(json_object *i, json_object *d, char *interface, char *device) {
+	struct json_object *res = NULL, *r;
+	const char *l3_device = NULL;
+
+	json_object_object_get_ex(i, "interface", &r);
+	if (NULL == r) return res;
+
+	int j;
+	const int N = json_object_array_length(r);
+	for (j = 0; j < N; j++) {
+		json_object *item, *tmp;
+		item = json_object_array_get_idx(r, j);
+		json_object_object_get_ex(item, "interface", &tmp);
+		if (NULL == tmp) continue;
+		const char *j_name = json_object_get_string(tmp);
+		if (0 == strcmp(j_name, interface) && strlen(interface) == strlen(j_name)) {
+			json_object_object_get_ex(item, "l3_device", &tmp);
+			if (!tmp) continue;
+			l3_device = json_object_get_string(tmp);
+			if (0 == strcmp(l3_device, device) && strlen(l3_device) == strlen(device)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 struct json_object *get_device_interface(json_object *i, json_object *d, char *name) {
 	struct json_object *res = NULL, *r;
 	const char *l3_device = NULL;
@@ -51,6 +96,7 @@ struct json_object *get_device_interface(json_object *i, json_object *d, char *n
 
 	return res;
 }
+
 struct json_object *get_json_interface(json_object *obj, char *name) {
 	struct json_object *res = NULL, *r;
 
@@ -281,8 +327,6 @@ tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 int
 network_operational_tx(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-	/* Sets the value in ubus callback. */
-
 	if (NULL != u_data.d) {
 		return execute_base(interface_name, list, u_data, tx_transform);
 	}
@@ -429,6 +473,67 @@ network_operational_ip(char *interface_name, struct list_head *list, ubus_data u
     return SR_ERR_OK;
 }
 
+static void
+neigh6_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+{
+    struct json_object *table, *iter_object;
+    /* const char *ubus_result; */
+    const char *fmt =
+        "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/neighbor[ip='%s']/%s";
+    char xpath[MAX_XPATH];
+
+    json_object_object_get_ex(u_data.n, "neighbors", &table);
+	if (!table) return;
+
+    /* Get ip and mask (prefix length) from address. */
+    const int N = json_object_array_length(table);
+    struct value_node *list_value;
+    for (int i = 0; i < N; i++) {
+        json_object *ip_obj, *mac_obj, *device_obj, *router_obj, *status_obj;
+        const char *ip, *mac, *device, *status;
+		bool router;
+
+        iter_object = json_object_array_get_idx(table, i);
+		if (!iter_object) continue;
+
+        json_object_object_get_ex(iter_object, "device", &device_obj);
+		device = json_object_get_string(device_obj);
+		if (!device) continue;
+		if(!is_l3_member(u_data.i, u_data.d, interface_name, (char *) device)) continue;
+
+        json_object_object_get_ex(iter_object, "ip6addr", &ip_obj);
+        json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
+        json_object_object_get_ex(iter_object, "router", &router_obj);
+        json_object_object_get_ex(iter_object, "ip6status", &status_obj);
+        ip = json_object_get_string(ip_obj);
+        mac = json_object_get_string(mac_obj);
+        router = json_object_get_boolean(router_obj);
+        status = json_object_get_string(status_obj);
+		if (!ip || !mac || !status) continue;
+
+		sprintf(xpath, fmt, interface_name, ip, "link-layer-address");
+        list_value = calloc(1, sizeof *list_value);
+        sr_new_values(1, &list_value->value);
+        sr_val_set_xpath(list_value->value, xpath);
+        sr_val_set_str_data(list_value->value, SR_STRING_T, mac);
+        list_add(&list_value->head, list);
+
+		sprintf(xpath, fmt, interface_name, ip, "state");
+        list_value = calloc(1, sizeof *list_value);
+        sr_new_values(1, &list_value->value);
+        sr_val_set_xpath(list_value->value, xpath);
+        sr_val_set_str_data(list_value->value, SR_ENUM_T, transform_state(status));
+        list_add(&list_value->head, list);
+
+		if (!router) continue;
+		sprintf(xpath, fmt, interface_name, ip, "is-router");
+        list_value = calloc(1, sizeof *list_value);
+        sr_new_values(1, &list_value->value);
+        sr_val_set_xpath(list_value->value, xpath);
+		list_value->value->type = SR_LEAF_EMPTY_T;
+        list_add(&list_value->head, list);
+    }
+}
 
 static void
 neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
@@ -439,41 +544,56 @@ neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
         "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(u_data.i, "table", &table);
+    json_object_object_get_ex(u_data.a, "table", &table);
+	if (!table) return;
 
     /* Get ip and mask (prefix length) from address. */
     const int N = json_object_array_length(table);
     struct value_node *list_value;
     for (int i = 0; i < N; i++) {
-        json_object *ip_obj, *mac_obj;
-        const char *ip, *mac;
+        json_object *ip_obj, *mac_obj, *device_obj;
+        const char *ip, *mac, *device;
 
         iter_object = json_object_array_get_idx(table, i);
+		if (!iter_object) continue;
+
+        json_object_object_get_ex(iter_object, "device", &device_obj);
+		device = json_object_get_string(device_obj);
+		if (!device) continue;
+		if(!is_l3_member(u_data.i, u_data.d, interface_name, (char *) device)) continue;
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
         json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
-
         ip = json_object_get_string(ip_obj);
         mac = json_object_get_string(mac_obj);
+		if (!ip || !mac) continue;
 
-        sprintf(xpath, fmt, interface_name, remove_quotes(ip));
+		sprintf(xpath, fmt, interface_name, ip);
+		printf("XPATH %s\n", xpath);
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
         sr_val_set_xpath(list_value->value, xpath);
-        sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(mac));
-
+        sr_val_set_str_data(list_value->value, SR_STRING_T, mac);
         list_add(&list_value->head, list);
 
     }
 }
 
 int
+network_operational_neigh6(char *interface_name, struct list_head *list, ubus_data u_data)
+{
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, neigh6_transform);
+	}
+
+    return SR_ERR_OK;
+}
+
+int
 network_operational_neigh(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    /* Sets the value in ubus callback. */
 	if (NULL != u_data.d) {
-		//TODO
-		//return execute_base(interface_name, list, obj, neigh_transform);
+		return execute_base(interface_name, list, u_data, neigh_transform);
 	}
 
     return SR_ERR_OK;
