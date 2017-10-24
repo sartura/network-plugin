@@ -1,19 +1,12 @@
 #include "network.h"
+#include "terastream.h"
 
 #include "common.h"
 
 #define MAX_UBUS_PATH 100
 #define UBUS_INVOKE_TIMEOUT 2000
 
-struct status_container {
-    char *interface_name;
-    const char *ubus_method;
-    ubus_val_to_sr_val transform;
-    struct list_head *list;
-};
-
 struct ubus_context *ctx;
-struct status_container *container_msg;
 
 static char *
 remove_quotes(const char *str)
@@ -25,360 +18,351 @@ remove_quotes(const char *str)
 
   return unquoted;
 }
-int
-network_operational_start()
-{
-    if (ctx) return 0;
-    INF("Connect ubus context. %zu", (size_t) ctx);
-    container_msg = calloc(1,sizeof(*container_msg));
 
-    ctx = ubus_connect(NULL);
-    if (ctx == NULL) {
-        INF_MSG("Cant allocate ubus\n");
-        return -1;
-    }
+struct json_object *get_device_interface(json_object *i, json_object *d, char *name) {
+	struct json_object *res = NULL, *r;
+	const char *l3_device = NULL;
 
-    return 0;
+	json_object_object_get_ex(i, "interface", &r);
+	if (NULL == r) return res;
+
+	int j;
+	const int N = json_object_array_length(r);
+	for (j = 0; j < N; j++) {
+		json_object *item, *tmp;
+		item = json_object_array_get_idx(r, j);
+		json_object_object_get_ex(item, "interface", &tmp);
+		if (NULL == tmp) continue;
+		const char *j_name = json_object_get_string(tmp);
+		if (0 == strcmp(j_name, name) && strlen(name) == strlen(j_name)) {
+			json_object_object_get_ex(item, "l3_device", &tmp);
+			if (!tmp) continue;
+			l3_device = json_object_get_string(tmp);
+			break;
+		}
+	}
+
+	json_object_object_foreach(d, key, val) {
+		if (0 == strcmp(key, l3_device) && strlen(key) == strlen(l3_device)) {
+			res = val;
+			break;
+		}
+	}
+
+	return res;
 }
+struct json_object *get_json_interface(json_object *obj, char *name) {
+	struct json_object *res = NULL, *r;
 
-void
-network_operational_stop()
-{
-    INF_MSG("Free ubus context.");
-    INF("%lu %lu", (long unsigned)ctx, (long unsigned) container_msg);
-    if (ctx) ubus_free(ctx);
-    if (container_msg) free(container_msg);
-}
+	json_object_object_get_ex(obj, "interface", &r);
+	if (NULL == r) return res;
 
-static void
-make_status_container(struct status_container **context,
-                      const char *ubus_method_to_call,
-                      ubus_val_to_sr_val result_function,
-                      char *interface_name, struct list_head *list)
-{
-    *context = container_msg;
-    (*context)->interface_name = interface_name;
-    (*context)->transform = result_function;
-    (*context)->ubus_method = ubus_method_to_call;
-    (*context)->list = list;
-}
+	int j;
+	const int N = json_object_array_length(r);
+	for (j = 0; j < N; j++) {
+		json_object *item, *n;
+		item = json_object_array_get_idx(r, j);
+		json_object_object_get_ex(item, "interface", &n);
+		if (NULL == n) continue;
+		const char *j_name = json_object_get_string(n);
+		if (0 == strcmp(j_name, name) && strlen(name) == strlen(j_name)) {
+			res = item;
+			break;
+		}
+	}
 
-static void
-ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
-{
-    char *json_string;
-    struct json_object *base_object;
-
-    struct status_container *status_container_msg;
-
-    status_container_msg = (struct status_container *) req->priv;
-
-    if (!msg) {
-        return;
-    }
-
-    json_string = blobmsg_format_json(msg, true);
-    base_object = json_tokener_parse(json_string);
-
-    status_container_msg->transform(base_object, status_container_msg->interface_name, status_container_msg->list);
-
-    json_object_put(base_object);
-    free(json_string);
+	return res;
 }
 
 static int
-execute_base(const char *interface_name, struct list_head *list, struct json_object *obj, ubus_val_to_sr_val function)
+execute_base(const char *interface_name, struct list_head *list, ubus_data u_data, ubus_val_to_sr_val function)
 {
 	INF("execute interface name %s", interface_name);
-	function(obj, (char *) interface_name, list);
+	function(u_data, (char *) interface_name, list);
 	INF_MSG("finished");
 	return SR_ERR_OK;
 }
 
-static int
-ubus_base(const char *ubus_lookup_path,
-          struct status_container *msg,
-          struct blob_buf *blob)
-{
-    /* INF("list null %d", msg->list==NULL); */
-    uint32_t id = 0;
-    int rc = SR_ERR_OK;
-
-    char ubuf[MAX_UBUS_PATH];
-    sprintf(ubuf, ubus_lookup_path, msg->interface_name);
-
-    rc = ubus_lookup_id(ctx, ubuf, &id);
-    if (rc) {
-        INF("ubus [%d]: %s\n", rc, ubus_strerror(rc));
-        goto exit;
-    }
-
-    rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, UBUS_INVOKE_TIMEOUT);
-    if (rc) {
-        INF("ubus [%s]: no object %s\n", ubus_strerror(rc), msg->ubus_method);
-        goto exit;
-    }
-
-  exit:
-    blob_buf_free(blob);
-
-    return rc;
-
-}
-
 static void
-operstatus_transform(json_object *base, char *interface_name, struct list_head *list)
+operstatus_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+	struct json_object *t;
+	const char *ubus_result;
+	struct value_node *list_value;
 
-    json_object_object_get_ex(base,
-                              "up",
-                              &t);
-    ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
+	struct json_object *obj = get_json_interface(u_data.i, interface_name);
+	if (!obj) return;
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_str_data(list_value->value, SR_ENUM_T,
-                        !strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
+	json_object_object_get_ex(obj, "up", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
 
-    char xpath[MAX_XPATH];
-    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/oper-status";
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+	sr_val_set_str_data(list_value->value, SR_ENUM_T,
+			!strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
 
-    list_add(&list_value->head, list);
+	char xpath[MAX_XPATH];
+	char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/oper-status";
+	sprintf(xpath, fmt, interface_name);
+	sr_val_set_xpath(list_value->value, xpath);
+
+	list_add(&list_value->head, list);
 }
 
 int
-network_operational_operstatus(char *interface_name, struct list_head *list, struct json_object *obj)
+network_operational_operstatus(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg = NULL;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, operstatus_transform);
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, operstatus_transform);
 	}
-    make_status_container(&msg, "status", operstatus_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.interface.%s", msg, &buf);
 
-    return SR_ERR_OK;
+	return SR_ERR_OK;
+}
+
+	static void
+mac_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+{
+	INF_MSG("function call");
+	struct json_object *t;
+	const char *ubus_result;
+	struct value_node *list_value;
+	char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
+	char xpath[MAX_XPATH];
+
+	INF("ubus_result %s", interface_name);
+	t = get_device_interface(u_data.i, u_data.d, interface_name);
+	if (!t) return;
+
+	json_object_object_get_ex(t, "macaddr", &t);
+	if (!t) return;
+	ubus_result = json_object_get_string(t);
+
+	INF("ubus_result %s", ubus_result);
+
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+
+	sprintf(xpath, fmt, interface_name);
+	sr_val_set_xpath(list_value->value, xpath);
+	sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
+
+	list_add(&list_value->head, list);
+}
+
+	int
+network_operational_mac(char *interface_name, struct list_head *list, ubus_data u_data)
+{
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, mac_transform);
+	}
+
+	return SR_ERR_OK;
 }
 
 static void
-mac_transform(json_object *base, char *interface_name, struct list_head *list)
+rx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
-    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
-    char xpath[MAX_XPATH];
+	struct json_object *t, *i;
+	const char *ubus_result;
+	struct value_node *list_value;
+	char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/";
+	char xpath[MAX_XPATH], base[MAX_XPATH];
 
+    snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    json_object_object_get_ex(base,
-                              "br-lan",
-                              &t);
-    if (!t) return;
+	i = get_device_interface(u_data.i, u_data.d, interface_name);
+	if (!i) return;
 
-    ubus_result = json_object_to_json_string(t);
+	json_object_object_get_ex(i, "statistics", &i);
+	if (!i) return;
 
-    json_object_object_get_ex(t,
-                              "macaddr",
-                              &t);
-    if (!t) return;
-    ubus_result = json_object_to_json_string(t);
+	json_object_object_get_ex(i, "rx_bytes", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "out-octets");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
+	json_object_object_get_ex(i, "rx_dropped", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "out-discards");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
-    sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
+	json_object_object_get_ex(i, "rx_errors", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "out-errors");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 
-    list_add(&list_value->head, list);
+	json_object_object_get_ex(i, "multicast", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "out-multicast-pkts");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 }
 
 int
-network_operational_mac(char *interface_name, struct list_head *list, struct json_object *obj)
+network_operational_rx(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg = NULL;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, mac_transform);
+	/* Sets the value in ubus callback. */
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, rx_transform);
 	}
-    make_status_container(&msg, "status", mac_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.device", msg, &buf);
 
-    return SR_ERR_OK;
+	return SR_ERR_OK;
 }
 
 static void
-rx_transform(json_object *base, char *interface_name, struct list_head *list)
+tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
-    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/out-octets";
-    char xpath[MAX_XPATH];
+	struct json_object *t, *i;
+	const char *ubus_result;
+	struct value_node *list_value;
+	char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/";
+	char xpath[MAX_XPATH], base[MAX_XPATH];
 
+    snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    json_object_object_get_ex(base,
-                              "br-lan",
-                              &t);
-    ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
+	i = get_device_interface(u_data.i, u_data.d, interface_name);
+	if (!i) return;
 
-    json_object_object_get_ex(t, "statistics", &t);
-    /* ubus_result = json_object_to_json_string(t); */
-    json_object_object_get_ex(t, "rx_bytes", &t);
-    ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
+	json_object_object_get_ex(i, "statistics", &i);
+	if (!i) return;
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	json_object_object_get_ex(i, "tx_bytes", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "in-octets");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 
-    list_add(&list_value->head, list);
+	json_object_object_get_ex(i, "tx_dropped", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "in-discards");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
+
+	json_object_object_get_ex(i, "tx_errors", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "in-errors");
+	sr_val_set_xpath(list_value->value, xpath);
+	list_value->value->type = SR_UINT64_T;
+	sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+	list_add(&list_value->head, list);
 }
 
 int
-network_operational_rx(char *interface_name, struct list_head *list, struct json_object *obj)
+network_operational_tx(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    /* Sets the value in ubus callback. */
+	/* Sets the value in ubus callback. */
 
-    struct status_container *msg = NULL;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, rx_transform);
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, tx_transform);
 	}
-    make_status_container(&msg, "status", rx_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.device", msg, &buf);
 
-    return SR_ERR_OK;
+	return SR_ERR_OK;
 }
 
 static void
-tx_transform(json_object *base, char *interface_name, struct list_head *list)
+mtu_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/statistics/in-octets";
-    char xpath[MAX_XPATH];
+	struct json_object *t;
+	const char *ubus_result;
+	struct value_node *list_value;
+	const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/mtu";
+	char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(base,
-                              "br-lan",
-                              &t);
-    ubus_result = json_object_to_json_string(t);
-
-    json_object_object_get_ex(t, "statistics", &t);
-    ubus_result = json_object_to_json_string(t);
-    json_object_object_get_ex(t, "tx_bytes", &t);
-    ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
-
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
-}
-
-int
-network_operational_tx(char *interface_name, struct list_head *list, struct json_object *obj)
-{
-    /* Sets the value in ubus callback. */
-
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, tx_transform);
+	json_object_object_get_ex(u_data.i,
+			"eth0.1",
+			&t);
+	if (!t) {
+		return;
 	}
-    make_status_container(&msg, "status", tx_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.device", msg, &buf);
+	ubus_result = json_object_to_json_string(t);
 
-    return SR_ERR_OK;
-}
+	json_object_object_get_ex(t, "mtu", &t);
+	ubus_result = json_object_get_string(t);
+	if (!ubus_result) return;
 
-static void
-mtu_transform(json_object *base, char *interface_name, struct list_head *list)
-{
-	INF_MSG("function call");
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/mtu";
-    char xpath[MAX_XPATH];
+	list_value = calloc(1, sizeof *list_value);
+	sr_new_values(1, &list_value->value);
+	sprintf(xpath, fmt, interface_name);
+	sr_val_set_xpath(list_value->value, xpath);
 
-    json_object_object_get_ex(base,
-                              "eth0.1",
-                              &t);
-    if (!t) {
-      return;
-    }
-     ubus_result = json_object_to_json_string(t);
+	list_value->value->type = SR_UINT16_T;
+	sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
 
-    json_object_object_get_ex(t, "mtu", &t);
-    ubus_result = json_object_to_json_string(t);
-    if (!ubus_result) return;
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
-
-    list_value->value->type = SR_UINT16_T;
-    sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
-
-    list_add(&list_value->head, list);
+	list_add(&list_value->head, list);
 
 }
 
-int
-network_operational_mtu(char *interface_name, struct list_head *list, struct json_object *obj)
+	int
+network_operational_mtu(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, mtu_transform);
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, mtu_transform);
 	}
-    make_status_container(&msg, "status", mtu_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.device", msg, &buf);
 
-    return SR_ERR_OK;
+	return SR_ERR_OK;
 }
 
-static void
-ip_transform(json_object *base, char *interface_name, struct list_head *list)
+	static void
+ip_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
-    const char *ip;
-    uint8_t prefix_length = 0;
-    struct json_object *t;
-    struct value_node *list_value;
-    char xpath[MAX_XPATH];
+	const char *ip;
+	uint8_t prefix_length = 0;
+	struct json_object *t;
+	struct value_node *list_value;
+	char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(base, "ipv4-address", &t);
+	struct json_object *obj = get_json_interface(u_data.i, interface_name);
+	if (!obj) {
+		return;
+	}
+
+    json_object_object_get_ex(obj, "ipv4-address", &t);
     if (!t) {
         return;
     }
-    /* ubus_result = json_object_to_json_string(t); */
+    /* ubus_result = json_object_get_string(t); */
     /* INF("%s", ubus_result); */
 
     t = json_object_array_get_idx(t, 0);
@@ -413,25 +397,20 @@ ip_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_ip(char *interface_name, struct list_head *list, struct json_object *obj)
+network_operational_ip(char *interface_name, struct list_head *list, ubus_data u_data)
 {
     /* Sets the value in ubus callback. */
 
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, ip_transform);
+	if (NULL != u_data.d) {
+		return execute_base(interface_name, list, u_data, ip_transform);
 	}
-    make_status_container(&msg, "status", ip_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("network.interface.%s", msg, &buf);
 
     return SR_ERR_OK;
 }
 
 
 static void
-neigh_transform(json_object *base, char *interface_name, struct list_head *list)
+neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
     struct json_object *table, *iter_object;
@@ -440,7 +419,7 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
         "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(base, "table", &table);
+    json_object_object_get_ex(u_data.i, "table", &table);
 
     /* Get ip and mask (prefix length) from address. */
     const int N =  	json_object_array_length(table);
@@ -454,8 +433,8 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
         json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
 
-        ip = json_object_to_json_string(ip_obj);
-        mac = json_object_to_json_string(mac_obj);
+        ip = json_object_get_string(ip_obj);
+        mac = json_object_get_string(mac_obj);
 
         sprintf(xpath, fmt, interface_name, remove_quotes(ip));
         list_value = calloc(1, sizeof *list_value);
@@ -469,24 +448,19 @@ neigh_transform(json_object *base, char *interface_name, struct list_head *list)
 }
 
 int
-network_operational_neigh(char *interface_name, struct list_head *list, struct json_object *obj)
+network_operational_neigh(char *interface_name, struct list_head *list, ubus_data u_data)
 {
     /* Sets the value in ubus callback. */
-    struct status_container *msg;
-	if (NULL != obj) {
+	if (NULL != u_data.d) {
 		//TODO
 		//return execute_base(interface_name, list, obj, neigh_transform);
 	}
-    make_status_container(&msg, "arp", neigh_transform, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("router.net", msg, &buf);
 
     return SR_ERR_OK;
 }
 
 static void
-sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
+sfp_rx_pwr_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
     struct json_object *t;
@@ -496,13 +470,13 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
-    json_object_object_get_ex(base,
+    json_object_object_get_ex(u_data.i,
                               "rx-pwr",
                               &t);
     if (!t) {
         return;
     }
-    ubus_result = json_object_to_json_string(t);
+    ubus_result = json_object_get_string(t);
     if (!ubus_result) return;
 
     list_value = calloc(1, sizeof *list_value);
@@ -524,22 +498,17 @@ sfp_rx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_rx_pwr(char *interface_name, struct list_head *list, struct json_object *obj) {
+int sfp_rx_pwr(char *interface_name, struct list_head *list, ubus_data u_data) {
 
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, sfp_rx_pwr_cb);
+	if (NULL != u_data.d) {
+		//return execute_base(interface_name, list, obj, sfp_rx_pwr_cb);
 	}
-    make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("sfp.ddm", msg, &buf);
 
     return SR_ERR_OK;
 }
 
 static void
-sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
+sfp_tx_pwr_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
     struct json_object *t;
@@ -549,13 +518,13 @@ sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
-    json_object_object_get_ex(base,
+    json_object_object_get_ex(u_data.i,
                               "tx-pwr",
                               &t);
     if (!t) {
         return;
     }
-    ubus_result = json_object_to_json_string(t);
+    ubus_result = json_object_get_string(t);
     if (!ubus_result) return;
 
     list_value = calloc(1, sizeof *list_value);
@@ -574,16 +543,11 @@ sfp_tx_pwr_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_tx_pwr(char *interface_name, struct list_head *list, struct json_object *obj)
+int sfp_tx_pwr(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, sfp_tx_pwr_cb);
+	if (NULL != u_data.d) {
+		//return execute_base(interface_name, list, obj, sfp_tx_pwr_cb);
 	}
-    make_status_container(&msg, "get-tx-pwr", sfp_tx_pwr_cb, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("sfp.ddm", msg, &buf);
 
     return SR_ERR_OK;
 }
@@ -591,7 +555,7 @@ int sfp_tx_pwr(char *interface_name, struct list_head *list, struct json_object 
 
 
 static void
-sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
+sfp_current_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
     struct json_object *t;
@@ -601,14 +565,14 @@ sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
     /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
-    json_object_object_get_ex(base,
+    json_object_object_get_ex(u_data.i,
                               "current",
                               &t);
     if (!t) {
         return;
     }
 
-    ubus_result = json_object_to_json_string(t);
+    ubus_result = json_object_get_string(t);
     INF("%s", ubus_result);
     if (!ubus_result) return;
 
@@ -634,22 +598,17 @@ sfp_current_cb(json_object *base, char *interface_name, struct list_head *list)
 }
 
 
-int sfp_current(char *interface_name, struct list_head *list, struct json_object *obj)
+int sfp_current(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, sfp_current_cb);
+	if (NULL != u_data.d) {
+		//return execute_base(interface_name, list, obj, sfp_current_cb);
 	}
-    make_status_container(&msg, "get-current", sfp_current_cb, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("sfp.ddm", msg, &buf);
 
     return SR_ERR_OK;
 }
 
 static void
-sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
+sfp_voltage_cb(ubus_data u_data, char *interface_name, struct list_head *list)
 {
 	INF_MSG("function call");
     struct json_object *t;
@@ -659,14 +618,14 @@ sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
     /* char xpath[MAX_XPATH]; */
     char *end = NULL;
 
-    json_object_object_get_ex(base,
+    json_object_object_get_ex(u_data.i,
                               "voltage",
                               &t);
     if (!t) {
         return;
     }
 
-    ubus_result = json_object_to_json_string(t);
+    ubus_result = json_object_get_string(t);
     INF("%s", ubus_result);
     if (!ubus_result) return;
 
@@ -688,16 +647,11 @@ sfp_voltage_cb(json_object *base, char *interface_name, struct list_head *list)
     list_add(&list_value->head, list);
 }
 
-int sfp_voltage(char *interface_name, struct list_head *list, struct json_object *obj)
+int sfp_voltage(char *interface_name, struct list_head *list, ubus_data u_data)
 {
-    struct status_container *msg;
-	if (NULL != obj) {
-		return execute_base(interface_name, list, obj, sfp_voltage_cb);
+	if (NULL != u_data.d) {
+		//return execute_base(interface_name, list, obj, sfp_voltage_cb);
 	}
-    make_status_container(&msg, "get-voltage", sfp_voltage_cb, interface_name, list);
-    struct blob_buf buf = {0,};
-    blob_buf_init(&buf, 0);
-    ubus_base("sfp.ddm", msg, &buf);
 
     return SR_ERR_OK;
 

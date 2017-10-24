@@ -192,7 +192,7 @@ exit:
   return rc;
 }
 
-void interfaces_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+void interface_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
     struct plugin_ctx *pctx = req->priv;
 	struct json_object *r = NULL;
@@ -204,16 +204,7 @@ void interfaces_ubus_cb(struct ubus_request *req, int type, struct blob_attr *ms
 	} else {
 		goto cleanup;
 	}
-	pctx->data = r;
-
-	/* get array size */
-	pctx->interface_count = 0;
-	json_object_object_foreach(r, key, val) {
-		if (NULL != key && NULL != val) {
-            strcpy(pctx->interface_names[pctx->interface_count], key);
-			pctx->interface_count++;
-		}
-	}
+	pctx->u_data.i = r;
 
 cleanup:
 	if (NULL != json_result) {
@@ -222,21 +213,49 @@ cleanup:
 	return;
 }
 
+void device_ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+{
+    struct plugin_ctx *pctx = req->priv;
+	struct json_object *r = NULL;
+	char *json_result = NULL;
+
+	if (msg) {
+		json_result = blobmsg_format_json(msg, true);
+		r = json_tokener_parse(json_result);
+	} else {
+		goto cleanup;
+	}
+	pctx->u_data.d = r;
+
+cleanup:
+	if (NULL != json_result) {
+		free(json_result);
+	}
+	return;
+}
+
+static void
+clear_ubus_data(struct plugin_ctx *pctx) {
+	/* clear data out if it exists */
+	if (pctx->u_data.i) {
+		json_object_put(pctx->u_data.i);
+		pctx->u_data.i = NULL;
+	}
+	if (pctx->u_data.d) {
+		json_object_put(pctx->u_data.d);
+		pctx->u_data.d = NULL;
+	}
+}
+
 static int
 get_oper_interfaces(struct plugin_ctx *pctx)
 {
-	int rc = SR_ERR_OK, i;
+	int rc = SR_ERR_OK;
 	uint32_t id = 0;
 	struct blob_buf buf = {0};
 	int u_rc = UBUS_STATUS_OK;
 
-	/* get array size */
-	for(i = 0; i < pctx->interface_count; i++) {
-		INF("name -> %s", pctx->interface_names[i]);
-		free(pctx->interface_names[i]);
-	}
-	pctx->interface_count = 0;
-	pctx->data = NULL;
+	clear_ubus_data(pctx);
 
 	struct ubus_context *u_ctx = ubus_connect(NULL);
 	if (u_ctx == NULL) {
@@ -248,14 +267,31 @@ get_oper_interfaces(struct plugin_ctx *pctx)
 	blob_buf_init(&buf, 0);
 	u_rc = ubus_lookup_id(u_ctx, "network.device", &id);
 	if (UBUS_STATUS_OK != u_rc) {
-		ERR("ubus [%d]: no object asterisk\n", u_rc);
+		ERR("ubus [%d]: no object network.device\n", u_rc);
 		rc = SR_ERR_INTERNAL;
 		goto cleanup;
 	}
 
-	u_rc = ubus_invoke(u_ctx, id, "status", buf.head, interfaces_ubus_cb, pctx, 0);
+	u_rc = ubus_invoke(u_ctx, id, "status", buf.head, device_ubus_cb, pctx, 0);
 	if (UBUS_STATUS_OK != u_rc) {
-		ERR("ubus [%d]: no object asterisk\n", u_rc);
+		ERR("ubus [%d]: no object status\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	blob_buf_free(&buf);
+
+	blob_buf_init(&buf, 0);
+	u_rc = ubus_lookup_id(u_ctx, "network.interface", &id);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object network.interaface\n", u_rc);
+		rc = SR_ERR_INTERNAL;
+		goto cleanup;
+	}
+
+	u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, interface_ubus_cb, pctx, 0);
+	if (UBUS_STATUS_OK != u_rc) {
+		ERR("ubus [%d]: no object dump\n", u_rc);
 		rc = SR_ERR_INTERNAL;
 		goto cleanup;
 	}
@@ -605,18 +641,23 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     oper_func func;
     n_mappings = ARR_SIZE(table_interface_status);
 
-    network_operational_start();
-
     for (size_t i = 0; i < n_mappings; i++) {
         func = table_interface_status[i].op_func;
 
-        for (size_t j = 0; j < pctx->interface_count; j++) {
-          rc = func(pctx->interface_names[j], &list, pctx->data);
-          /* INF("%s", sr_strerror((rc))); */
-        }
-    }
-	if (pctx->data) {
-		json_object_put(pctx->data);
+		/* get interface list */
+		struct json_object *r = NULL;
+		json_object_object_get_ex(pctx->u_data.i, "interface", &r);
+		if (NULL == r) continue;
+
+		int j;
+		const int N =  	json_object_array_length(r);
+		for (j = 0; j < N; j++) {
+			json_object *item, *n;
+			item = json_object_array_get_idx(r, j);
+			json_object_object_get_ex(item, "interface", &n);
+			if (NULL == n) continue;
+			rc = func((char *) json_object_get_string(n), &list, pctx->u_data);
+		}
 	}
 
     size_t cnt = 0;
@@ -648,7 +689,8 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
         }
     }
 
-  exit:
+exit:
+	clear_ubus_data(pctx);
     return rc;
 }
 
@@ -727,7 +769,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     int rc = SR_ERR_OK;
     struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
-	ctx->interface_count = 0;
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
 
@@ -750,9 +791,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     /* Init type for interface... */
     rc = sync_datastores(ctx);
     SR_CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
-
-    //rc= get_oper_interfaces(ctx);
-    //SR_CHECK_RET(rc, error, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
 
 	INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
     rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx,
@@ -806,7 +844,6 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
     if (NULL != ctx->uctx) {
         uci_free_context(ctx->uctx);
     }
-    network_operational_stop();
     free(ctx);
 
     SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");
