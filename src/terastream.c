@@ -59,7 +59,7 @@ static oper_mapping table_interface_status[] = {
   { "neighbor6", network_operational_neigh6 },
 };
 
-static oper_mapping table_sfp_status[] = {
+static sfp_oper_mapping table_sfp_status[] = {
   { "rx-pwr", sfp_rx_pwr },
   { "tx-pwr", sfp_tx_pwr },
   { "voltage", sfp_voltage },
@@ -692,7 +692,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 		if (NULL == r) continue;
 
 		int j;
-		const int N =  	json_object_array_length(r);
+		const int N = json_object_array_length(r);
 		for (j = 0; j < N; j++) {
 			json_object *item, *n;
 			item = json_object_array_get_idx(r, j);
@@ -700,6 +700,13 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 			if (NULL == n) continue;
 			rc = func((char *) json_object_get_string(n), &list, pctx->u_data);
 		}
+	}
+
+    sfp_oper_func sfp_func;
+    n_mappings = ARR_SIZE(table_sfp_status);
+    for (size_t i = 0; i < n_mappings; i++) {
+        sfp_func = table_sfp_status[i].op_func;
+		rc = sfp_func(&list);
 	}
 
     size_t cnt = 0;
@@ -855,6 +862,9 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                    SR_SUBSCR_CTX_REUSE, &ctx->subscription);
     SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
+    rc = network_operational_start();
+    SR_CHECK_RET(rc, error, "Could not init ubus: %s", sr_strerror(rc));
+
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     return SR_ERR_OK;
 
@@ -886,6 +896,7 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
     if (NULL != ctx->uctx) {
         uci_free_context(ctx->uctx);
     }
+    network_operational_stop();
     free(ctx);
 
     SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");

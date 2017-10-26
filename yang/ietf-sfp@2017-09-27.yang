@@ -17,7 +17,7 @@ module ietf-sfp {
   description
     "SFP";
 
-  augment "/if:interfaces-state/if:interface" {
+  augment "/if:interfaces-state" {
     description
       "Data nodes for the operational state of SFP on interfaces.";
     container ddm {
