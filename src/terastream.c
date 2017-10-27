@@ -846,12 +846,6 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                                     0, SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
-    /* Operational data handling. */
-    INF_MSG("Subscribing to diagnostics");
-    rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics", data_provider_hgw_cb, *private_ctx,
-                                   SR_SUBSCR_CTX_REUSE, &ctx->subscription);
-    SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
-
     INF("sr_plugin_init_cb for sysrepo-plugin-dt-network %s", sr_strerror(rc));
 
     /* Operational data handling. */
