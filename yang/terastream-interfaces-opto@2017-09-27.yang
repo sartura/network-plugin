@@ -18,33 +18,34 @@ module terastream-interfaces-opto {
 
   augment "/if:interfaces-state" {
     description
+     "sfp operational data";
     leaf rx-pwr {
       type decimal64 {
            fraction-digits 4;
       }
       description
-        "";
+        "SFP RX power";
     }
     leaf tx-pwr {
       type decimal64 {
            fraction-digits 4;
       }
       description
-        "";
+        "SFP TX power";
     }
     leaf current {
       type decimal64 {
            fraction-digits 4;
       }
       description
-        "";
+        "SFP current";
     }
     leaf voltage {
       type decimal64 {
            fraction-digits 4;
       }
       description
-        "";
+        "SFP voltage";
     }
   }
 }
