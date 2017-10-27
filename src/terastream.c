@@ -39,14 +39,6 @@ static sr_uci_link table_sr_uci[] =
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
 static const char *default_interface_type = "iana-if-type:ethernetCsmacd";
 
-/* Mappings of operational nodes to corresponding handler functions. */
-/* Functions must not need the plugin context. */
-static adiag_node_func_m table_operational[] = {
-  { "version", adiag_version },
-  { "memory-status", adiag_free_memory },
-  { "cpu-usage", adiag_cpu_usage },
-};
-
 static oper_mapping table_interface_status[] = {
   { "oper-status", network_operational_operstatus },
   { "phys-address", network_operational_mac },
@@ -741,45 +733,6 @@ exit:
 	clear_ubus_data(pctx);
     return rc;
 }
-
-static int
-data_provider_hgw_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
-{
-    char *node;
-    struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
-    (void) pctx;
-    size_t n_mappings;
-    int rc = SR_ERR_OK;
-
-	INF("node name eq provisioning %s", cb_xpath);
-    n_mappings = ARR_SIZE(table_operational);
-    INF("Diagnostics for %s %zu", cb_xpath, n_mappings);
-
-    adiag_func func;
-    *values_cnt = n_mappings;
-    rc = sr_new_values(*values_cnt, values);
-    SR_CHECK_RET(rc, exit, "Couldn't create values %s", sr_strerror(rc));
-
-    for (size_t i = 0; i < *values_cnt; i++) {
-        node = table_operational[i].node;
-        func = table_operational[i].op_func;
-        INF("\tDiagnostics for: %s", node);
-
-        rc = func(&(*values)[i]);
-        /* INF("[%d] %s", rc, sr_val_to_str(&(*values)[i])); */
-    }
-
-    if (*values_cnt > 0) {
-        INF("Debug sysrepo values printout: %zu", *values_cnt);
-        for (size_t i = 0; i < *values_cnt; i++){
-                     //sr_print_val(&(*values)[i]);
-        }
-    }
-
-  exit:
-    return rc;
-}
-
 
 static int
 sync_datastores(struct plugin_ctx *ctx)
