@@ -15,7 +15,7 @@ $ docker run -i -t --name sysrepo2 -p 830:830 --rm sysrepo/sysrepo-netopeer2:net
 ## run dockerfile without supervisor
 
 ```
-$ docker run -i -t --name network_plugin -p 830:830 --rm sysrepo/sysrepo-netopeer2:network bash
+$ docker run -v /opt/yang:/opt/fork -i -t --name network_plugin --rm sysrepo/sysrepo-netopeer2:network bash
 $ ubusd &
 $ rpcd &
 $ sysrepod
