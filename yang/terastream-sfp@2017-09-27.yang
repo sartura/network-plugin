@@ -1,15 +1,9 @@
-module ietf-sfp {
+module terastream-sfp {
   namespace "urn:ietf:params:xml:ns:yang:ietf-sfp";
-  prefix sfp;
+  prefix ts-sfp;
 
   import ietf-interfaces {
     prefix if;
-  }
-  import ietf-inet-types {
-    prefix inet;
-  }
-  import ietf-yang-types {
-    prefix yang;
   }
 
   organization "DT";
@@ -17,11 +11,15 @@ module ietf-sfp {
   description
     "SFP";
 
+  revision "2017-09-27" {
+    description
+     "Version 0.1.0 -- Initial version.";
+  }
+
   augment "/if:interfaces-state" {
     description
       "Data nodes for the operational state of SFP on interfaces.";
     container ddm {
-//      presence "Present if SFP is enabled on this interface";
       config false;
       description
         ".";

@@ -1,14 +1,11 @@
-module provisioning {
+module terastream-provisioning {
 
     namespace "urn:terastream:provisioning";
 
-    prefix "terastream-sip";
+    prefix "ts-sip";
 
     organization
         "Deutsche Telekom AG";
-
-    contact
-        "Hmm";
 
     description
         "This module defines HGW provisioning used in the TeraStream home gateway project.";
@@ -18,8 +15,7 @@ module provisioning {
             "Version 0.1.0 -- Initial version.";
     }
 
-
-   container "hgw-diagnostics" {
+    container "hgw-diagnostics" {
       config false;
 
       description
