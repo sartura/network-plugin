@@ -1,0 +1,50 @@
+module terastream-interfaces-opto {
+  namespace "urn:ietf:params:xml:ns:yang:ietf-sfp";
+  prefix ts-sfp;
+
+  import ietf-interfaces {
+    prefix if;
+  }
+
+  organization "DT";
+
+  description
+    "SFP";
+
+  revision "2017-09-27" {
+    description
+     "Version 0.1.0 -- Initial version.";
+  }
+
+  augment "/if:interfaces-state" {
+    description
+    leaf rx-pwr {
+      type decimal64 {
+           fraction-digits 4;
+      }
+      description
+        "";
+    }
+    leaf tx-pwr {
+      type decimal64 {
+           fraction-digits 4;
+      }
+      description
+        "";
+    }
+    leaf current {
+      type decimal64 {
+           fraction-digits 4;
+      }
+      description
+        "";
+    }
+    leaf voltage {
+      type decimal64 {
+           fraction-digits 4;
+      }
+      description
+        "";
+    }
+  }
+}
