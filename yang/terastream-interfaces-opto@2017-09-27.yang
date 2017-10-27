@@ -1,5 +1,5 @@
 module terastream-interfaces-opto {
-  namespace "urn:ietf:params:xml:ns:yang:ietf-sfp";
+  namespace "urn:ietf:params:xml:ns:yang:terastream-interfaces-proto";
   prefix ts-sfp;
 
   import ietf-interfaces {
@@ -16,7 +16,7 @@ module terastream-interfaces-opto {
      "Version 0.1.0 -- Initial version.";
   }
 
-  augment "/if:interfaces-state" {
+  augment "/if:interfaces-state/if:interface" {
     description
      "sfp operational data";
     leaf rx-pwr {

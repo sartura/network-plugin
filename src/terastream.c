@@ -661,6 +661,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     (void) pctx;
     size_t n_mappings;
     int rc = SR_ERR_OK;
+	bool has_wan = false;
 
 	if (strlen(cb_xpath) > strlen("/ietf-interfaces:interfaces-state")) {
 		return SR_ERR_OK;
@@ -689,15 +690,19 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 			item = json_object_array_get_idx(r, j);
 			json_object_object_get_ex(item, "interface", &n);
 			if (NULL == n) continue;
-			rc = func((char *) json_object_get_string(n), &list, pctx->u_data);
+			char *interface = json_object_get_string(n);
+			if (0 == strncmp(interface, "wan", strlen(interface))) has_wan = true;
+			rc = func(interface, &list, pctx->u_data);
 		}
 	}
 
-    sfp_oper_func sfp_func;
-    n_mappings = ARR_SIZE(table_sfp_status);
-    for (size_t i = 0; i < n_mappings; i++) {
-        sfp_func = table_sfp_status[i].op_func;
-		rc = sfp_func(&list);
+	if (has_wan) {
+		sfp_oper_func sfp_func;
+		n_mappings = ARR_SIZE(table_sfp_status);
+		for (size_t i = 0; i < n_mappings; i++) {
+		    sfp_func = table_sfp_status[i].op_func;
+			rc = sfp_func(&list);
+		}
 	}
 
     size_t cnt = 0;
