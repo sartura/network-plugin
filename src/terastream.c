@@ -11,7 +11,6 @@
 
 #include "terastream.h"
 #include "network.h"
-#include "adiag_functions.h"
 #include "common.h"
 
 const char *YANG_MODEL = "ietf-interfaces";
