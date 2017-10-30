@@ -174,7 +174,7 @@ RUN \
       sysrepoctl -i -g ../yang/iana-if-type@2014-05-08.yang && \
       sysrepoctl -i -g ../yang/ietf-interfaces@2014-05-08.yang && \
       sysrepoctl -i -g ../yang/ietf-ip@2014-06-16.yang && \
-      sysrepoctl -i -g ../yang/ietf-sfp@2017-09-27.yang terastream-interfaces-opto@2017-09-27.yang 
+      sysrepoctl -i -g ../yang/ietf-sfp@2017-09-27.yang terastream-interfaces-proto@2017-09-27.yang
 
 RUN \
       sysrepoctl -d tls-listen -m ietf-netconf-server && \

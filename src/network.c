@@ -699,7 +699,7 @@ sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:rx-pwr";
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:rx-pwr";
     char *end = NULL;
 
     json_object_object_get_ex(obj,
@@ -744,7 +744,7 @@ sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:tx-pwr";
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:tx-pwr";
     char *end = NULL;
 
     json_object_object_get_ex(obj,
@@ -788,7 +788,7 @@ sfp_current_cb(struct json_object *obj, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:current";
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:current";
     char *end = NULL;
 
     json_object_object_get_ex(obj,
@@ -837,7 +837,7 @@ sfp_voltage_cb(struct json_object *obj, struct list_head *list)
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:voltage";
+    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:voltage";
     char *end = NULL;
 
     json_object_object_get_ex(obj,

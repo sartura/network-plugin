@@ -1,4 +1,4 @@
-module terastream-interfaces-opto {
+module terastream-interfaces-proto {
   namespace "urn:ietf:params:xml:ns:yang:terastream-interfaces-proto";
   prefix ts-sfp;
 
