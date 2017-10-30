@@ -1,6 +1,6 @@
 module terastream-interfaces-proto {
   namespace "urn:ietf:params:xml:ns:yang:terastream-interfaces-proto";
-  prefix ts-sfp;
+  prefix ts-proto;
 
   import ietf-interfaces {
     prefix if;
@@ -9,7 +9,7 @@ module terastream-interfaces-proto {
   organization "DT";
 
   description
-    "SFP";
+    "Optical data";
 
   revision "2017-09-27" {
     description
@@ -18,34 +18,34 @@ module terastream-interfaces-proto {
 
   augment "/if:interfaces-state/if:interface" {
     description
-     "sfp operational data";
+     "Optical operational data";
     leaf rx-pwr {
+      description "Received optical power";
       type decimal64 {
            fraction-digits 4;
       }
-      description
-        "SFP RX power";
+      units "dBm";
     }
     leaf tx-pwr {
+      description "Sent optical power";
       type decimal64 {
            fraction-digits 4;
       }
-      description
-        "SFP TX power";
+      units "dBm";
     }
     leaf current {
+      description "Optical current";
       type decimal64 {
            fraction-digits 4;
       }
-      description
-        "SFP current";
+      units "mA";
     }
     leaf voltage {
+      description "Optical voltage";
       type decimal64 {
            fraction-digits 4;
       }
-      description
-        "SFP voltage";
+      units "V";
     }
   }
 }

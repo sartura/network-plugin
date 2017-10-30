@@ -16,6 +16,22 @@ struct ubus_context *ctx;
 struct status_container *container_msg;
 
 static char *
+remove_unit(const char *str)
+{
+    char *number = (char *) str;
+    int i;
+
+    for (i = 0; i < strlen(str); i++) {
+        if (number[i] == ' ') {
+			number[i] = '\0';
+			break;
+		}
+    }
+
+	return number;
+}
+
+static char *
 remove_quotes(const char *str)
 {
   char *unquoted;
@@ -700,7 +716,6 @@ sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
     const char *ubus_result;
     struct value_node *list_value;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:rx-pwr";
-    char *end = NULL;
 
     json_object_object_get_ex(obj,
                               "rx-pwr",
@@ -715,13 +730,8 @@ sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, fmt);
 
-    int len = strlen(remove_quotes(ubus_result));
-    char *decresult = (char*)remove_quotes(ubus_result);
-    decresult[len-2] = '\0';
-    INF("%s", decresult);
-
-    double res = strtod(decresult, &end);
-    INF("%f", res);
+	char *end = NULL;
+    double res = strtod(remove_unit(ubus_result), &end);
     list_value->value->type = SR_DECIMAL64_T;
     list_value->value->data.decimal64_val = res;
 
@@ -745,7 +755,6 @@ sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
     const char *ubus_result;
     struct value_node *list_value;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:tx-pwr";
-    char *end = NULL;
 
     json_object_object_get_ex(obj,
                               "tx-pwr",
@@ -760,11 +769,8 @@ sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, fmt);
 
-    int len = strlen(remove_quotes(ubus_result));
-    char *decresult = (char*)remove_quotes(ubus_result);
-    decresult[len-2] = '\0';
-
-    double res = strtod(decresult, &end);
+	char *end = NULL;
+    double res = strtod(remove_unit(ubus_result), &end);
     list_value->value->type = SR_DECIMAL64_T;
     list_value->value->data.decimal64_val = res;
 
@@ -789,7 +795,6 @@ sfp_current_cb(struct json_object *obj, struct list_head *list)
     const char *ubus_result;
     struct value_node *list_value;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:current";
-    char *end = NULL;
 
     json_object_object_get_ex(obj,
                               "current",
@@ -805,17 +810,10 @@ sfp_current_cb(struct json_object *obj, struct list_head *list)
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, fmt);
 
-    INF("%s", remove_quotes(ubus_result));
-    int len = strlen(remove_quotes(ubus_result));
-    char *decresult = (char*)remove_quotes(ubus_result);
-    decresult[len-2] = '\0';
-    INF("%s", decresult);
-
+	char *end = NULL;
+    double res = strtod(remove_unit(ubus_result), &end);
     list_value->value->type = SR_DECIMAL64_T;
-    double res = strtod(decresult, &end);
-    INF("%f", res);
     list_value->value->data.decimal64_val = res;
-    sr_print_val(list_value->value);
 
     list_add(&list_value->head, list);
 }
@@ -838,7 +836,6 @@ sfp_voltage_cb(struct json_object *obj, struct list_head *list)
     const char *ubus_result;
     struct value_node *list_value;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-proto:voltage";
-    char *end = NULL;
 
     json_object_object_get_ex(obj,
                               "voltage",
@@ -854,15 +851,10 @@ sfp_voltage_cb(struct json_object *obj, struct list_head *list)
     sr_new_values(1, &list_value->value);
     sr_val_set_xpath(list_value->value, fmt);
 
-    int len = strlen(remove_quotes(ubus_result));
-    char *decresult = (char*)remove_quotes(ubus_result);
-    decresult[len-2] = '\0';
-    INF("%s", decresult);
-    double res = strtod(decresult, &end);
+	char *end = NULL;
+    double res = strtod(remove_unit(ubus_result), &end);
     list_value->value->type = SR_DECIMAL64_T;
     list_value->value->data.decimal64_val = res;
-    sr_print_val(list_value->value);
-    INF("%f", res);
 
     list_add(&list_value->head, list);
 }
