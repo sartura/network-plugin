@@ -14,8 +14,8 @@
 #define MAX_XPATH 256
 
 struct value_node {
-  struct list_head head;
-  sr_val_t *value;
+    struct list_head head;
+    sr_val_t *value;
 };
 
 typedef void (*ubus_val_to_sr_val)(ubus_data, char *, struct list_head *list);
@@ -25,13 +25,13 @@ typedef int (*oper_func)(char *, struct list_head *, ubus_data);
 typedef int (*sfp_oper_func)(struct list_head *);
 
 typedef struct oper_mapping {
-  char *node;
-  oper_func op_func;
+    char *node;
+    oper_func op_func;
 } oper_mapping;
 
 typedef struct sfp_oper_mapping {
-  char *node;
-  sfp_oper_func op_func;
+    char *node;
+    sfp_oper_func op_func;
 } sfp_oper_mapping;
 
 int network_operational_start();
