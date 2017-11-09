@@ -1,6 +1,6 @@
-module terastream-interfaces-proto {
+module terastream-interfaces-opto {
 
-  namespace "http://terastrm.net/ns/yang/terastream-interfaces-proto";
+  namespace "http://terastrm.net/ns/yang/terastream-interfaces-opto";
 
   prefix ts-opto;
 
