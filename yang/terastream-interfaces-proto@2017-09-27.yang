@@ -1,6 +1,8 @@
 module terastream-interfaces-proto {
-  namespace "urn:ietf:params:xml:ns:yang:terastream-interfaces-proto";
-  prefix ts-proto;
+
+  namespace "http://terastrm.net/ns/yang/terastream-interfaces-proto";
+
+  prefix ts-opto;
 
   import ietf-interfaces {
     prefix if;
