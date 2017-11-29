@@ -510,7 +510,7 @@ static void ip_transform(ubus_data u_data, char *interface_name, struct list_hea
 {
     const char *ip;
     uint8_t prefix_length = 0;
-    struct json_object *t;
+    struct json_object *ip_obj;
     struct value_node *list_value;
     char xpath[MAX_XPATH];
 
@@ -519,29 +519,28 @@ static void ip_transform(ubus_data u_data, char *interface_name, struct list_hea
         return;
     }
 
-    json_object_object_get_ex(obj, "ipv4-address", &t);
-    if (!t)
+    json_object_object_get_ex(obj, "ipv4-address", &ip_obj);
+    if (!ip_obj)
         return;
 
     int j;
-    const int N = json_object_array_length(t);
+    const int N = json_object_array_length(ip_obj);
     for (j = 0; j < N; j++) {
-        t = json_object_array_get_idx(t, j);
+        struct json_object *t = json_object_array_get_idx(ip_obj, j);
         if (!t)
             continue;
 
         /* Get ip and mask (prefix length) from address. */
-        enum json_type type;
-        json_object_object_foreach(t, key, val)
-        {
-            (void) key;
-            type = json_object_get_type(val);
-            if (type == json_type_string) {
-                ip = json_object_get_string(val);
-            } else if (json_type_int) {
-                prefix_length = (uint8_t) json_object_get_int(val);
-            }
-        }
+        struct json_object *a, *m;
+        json_object_object_get_ex(t, "address", &a);
+        if (!a)
+            continue;
+        ip = json_object_get_string(a);
+
+        json_object_object_get_ex(t, "mask", &m);
+        if (!a)
+            continue;
+        prefix_length = (uint8_t) json_object_get_int(m);
 
         const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length";
         sprintf(xpath, fmt, interface_name, ip);
@@ -553,28 +552,27 @@ static void ip_transform(ubus_data u_data, char *interface_name, struct list_hea
         list_add(&list_value->head, list);
     }
 
-    json_object_object_get_ex(obj, "ipv6-address", &t);
-    if (!t)
+    json_object_object_get_ex(obj, "ipv6-address", &ip_obj);
+    if (!ip_obj)
         return;
 
-    const int N6 = json_object_array_length(t);
+    const int N6 = json_object_array_length(ip_obj);
     for (j = 0; j < N6; j++) {
-        t = json_object_array_get_idx(t, j);
+        struct json_object *t = json_object_array_get_idx(ip_obj, j);
         if (!t)
             continue;
 
         /* Get ip and mask (prefix length) from address. */
-        enum json_type type;
-        json_object_object_foreach(t, key, val)
-        {
-            (void) key;
-            type = json_object_get_type(val);
-            if (type == json_type_string) {
-                ip = json_object_get_string(val);
-            } else if (json_type_int) {
-                prefix_length = (uint8_t) json_object_get_int(val);
-            }
-        }
+        struct json_object *a, *m;
+        json_object_object_get_ex(t, "address", &a);
+        if (!a)
+            continue;
+        ip = json_object_get_string(a);
+
+        json_object_object_get_ex(t, "mask", &m);
+        if (!a)
+            continue;
+        prefix_length = (uint8_t) json_object_get_int(m);
 
         const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length";
         sprintf(xpath, fmt, interface_name, ip);
