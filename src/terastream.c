@@ -736,6 +736,13 @@ static int data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, s
             rc = func(interface, &list, pctx->u_data);
         }
     }
+    // hard code physical interfaces
+    rc = phy_interfaces_state("eth1", &list, pctx->u_data);
+    rc = phy_interfaces_state("eth2", &list, pctx->u_data);
+    rc = phy_interfaces_state("eth3", &list, pctx->u_data);
+    rc = phy_interfaces_state("eth4", &list, pctx->u_data);
+    rc = phy_interfaces_state("wl0", &list, pctx->u_data);
+    rc = phy_interfaces_state("wl1", &list, pctx->u_data);
 
     if (has_wan) {
         sfp_oper_func sfp_func;

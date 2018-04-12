@@ -30,16 +30,6 @@ static char *remove_unit(const char *str)
     return number;
 }
 
-static char *remove_quotes(const char *str)
-{
-    char *unquoted;
-    unquoted = (char *) str;
-    unquoted = unquoted + 1;
-    unquoted[strlen(unquoted) - 1] = '\0';
-
-    return unquoted;
-}
-
 static char *transform_state(const char *name)
 {
     if (0 == strcmp(name, "INCOMPLETE")) {
@@ -300,7 +290,7 @@ static void mac_transform(ubus_data u_data, char *interface_name, struct list_he
 
     sprintf(xpath, fmt, interface_name);
     sr_val_set_xpath(list_value->value, xpath);
-    sr_val_set_str_data(list_value->value, SR_STRING_T, remove_quotes(ubus_result));
+    sr_val_set_str_data(list_value->value, SR_STRING_T, ubus_result);
 
     list_add(&list_value->head, list);
 }
@@ -884,6 +874,161 @@ int sfp_voltage(struct list_head *list)
     };
     blob_buf_init(&buf, 0);
     ubus_base("sfp.ddm", msg, &buf);
+
+    return SR_ERR_OK;
+}
+
+static void phy_interfaces_state_cb(ubus_data u_data, char *interface_name, struct list_head *list)
+{
+    struct json_object *t, *i;
+    const char *ubus_result;
+    struct value_node *list_value;
+    char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/";
+    char xpath[MAX_XPATH], base[MAX_XPATH];
+
+    snprintf(base, MAX_XPATH, fmt, interface_name);
+
+    json_object_object_foreach(u_data.d, key, val)
+    {
+        if (0 == strcmp(key, interface_name) && strlen(key) == strlen(interface_name)) {
+            i = val;
+            break;
+        }
+    }
+
+    /* add type */
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "type");
+    sr_val_set_xpath(list_value->value, xpath);
+    sr_val_set_str_data(list_value->value, SR_STRING_T, "iana-if-type:ethernetCsmacd");
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "macaddr", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result) {
+        return;
+    }
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "phys-address");
+    sr_val_set_xpath(list_value->value, xpath);
+    sr_val_set_str_data(list_value->value, SR_STRING_T, ubus_result);
+    list_add(&list_value->head, list);
+
+    if (0 != strcmp(interface_name, "wl0") && 0 != strcmp(interface_name, "wl1")) {
+        json_object_object_get_ex(i, "carrier", &t);
+        ubus_result = json_object_get_string(t);
+        if (!ubus_result) {
+            return;
+        }
+        list_value = calloc(1, sizeof *list_value);
+        sr_new_values(1, &list_value->value);
+        snprintf(xpath, MAX_XPATH, "%s%s", base, "oper-status");
+        sr_val_set_xpath(list_value->value, xpath);
+        sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
+        list_add(&list_value->head, list);
+    }
+
+    /* get statistics data */
+    json_object_object_get_ex(i, "statistics", &i);
+    if (!i)
+        return;
+
+    json_object_object_get_ex(i, "rx_bytes", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result) {
+        return;
+    }
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-octets");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT64_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "rx_dropped", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result) {
+        return;
+    }
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-discards");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT32_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "rx_errors", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result) {
+        return;
+    }
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-errors");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT32_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "multicast", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result) {
+        return;
+    }
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-multicast-pkts");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT64_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "tx_bytes", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result)
+        return;
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-octets");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT64_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "tx_dropped", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result)
+        return;
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-discards");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT32_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+
+    json_object_object_get_ex(i, "tx_errors", &t);
+    ubus_result = json_object_get_string(t);
+    if (!ubus_result)
+        return;
+    list_value = calloc(1, sizeof *list_value);
+    sr_new_values(1, &list_value->value);
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-errors");
+    sr_val_set_xpath(list_value->value, xpath);
+    list_value->value->type = SR_UINT32_T;
+    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+    list_add(&list_value->head, list);
+}
+
+int phy_interfaces_state(char *interface_name, struct list_head *list, ubus_data u_data)
+{
+    if (NULL != u_data.d) {
+        return execute_base(interface_name, list, u_data, phy_interfaces_state_cb);
+    }
 
     return SR_ERR_OK;
 }
