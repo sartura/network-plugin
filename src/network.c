@@ -118,7 +118,7 @@ struct json_object *get_device_interface(json_object *i, json_object *d, char *n
 
     json_object_object_foreach(d, key, val)
     {
-        if (0 == strcmp(key, l3_device) && strlen(key) == strlen(l3_device)) {
+        if (l3_device && 0 == strcmp(key, l3_device) && strlen(key) == strlen(l3_device)) {
             res = val;
             break;
         }
