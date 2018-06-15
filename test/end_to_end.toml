@@ -1,0 +1,180 @@
+[login]
+
+address = "172.17.0.2:830"
+username = "root"
+password = "root"
+
+### ipv4 - mtu ###
+#/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu 1500
+#/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu 1500
+[[unitTest]]
+
+name = "ipv4-mtu"
+
+[[unitTest.test]]
+
+RPC = """
+<edit-config>
+    <target>
+        <running/>
+    </target>
+    <config>
+        <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+            <interface>
+                <name>eth0</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <mtu>2000</mtu>
+                </ipv4>
+            </interface>
+            <interface>
+                <name>eth1</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <mtu>2000</mtu>
+                </ipv4>
+            </interface>
+        </interfaces>
+    </config>
+</edit-config>
+"""
+
+Reply = """<ok/>"""
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:ietf-interfaces='urn:ietf:params:xml:ns:yang:ietf-interfaces'  xmlns:ietf-ip='urn:ietf:params:xml:ns:yang:ietf-ip'  type="xpath" select="/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/mtu">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"><interface><name>eth0</name><ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip"><mtu>1500</mtu></ipv4></interface></interfaces></data>"""
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:ietf-interfaces='urn:ietf:params:xml:ns:yang:ietf-interfaces'  xmlns:ietf-ip='urn:ietf:params:xml:ns:yang:ietf-ip'  type="xpath" select="/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/mtu">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"><interface><name>eth1</name><ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip"><mtu>1500</mtu></ipv4></interface></interfaces></data>"""
+
+#[[unitTest.test]]
+#### don't know how to get info from uci currently
+#RPC = """
+#  <call xmlns="urn:ietf:params:xml:ns:yang:test-plugin">
+#    <command>uci show mtu</command>
+#  </call>
+#"""
+#
+#Reply = """<response xmlns="urn:ietf:params:xml:ns:yang:test-plugin">
+#don't know!!
+#</response>"""
+
+
+### ipv4 - address ###
+[[unitTest]]
+
+name = "ipv4-address"
+
+[[unitTest.test]]
+### delete the existing ipv4 addresses
+RPC = """
+<edit-config>
+    <target>
+        <running/>
+    </target>
+    <config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+            <interface>
+                <name>eth0</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <address xc:operation="delete">
+                        <ip>192.168.2.100</ip>
+                    </address>
+                </ipv4>
+            </interface>
+            <interface>
+                <name>eth1</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <address xc:operation="delete">
+                        <ip>10.10.1.5</ip>
+                    </address>
+                </ipv4>
+            </interface>
+        </interfaces>
+    </config>
+</edit-config>
+"""
+
+Reply = """<ok/>"""
+
+[[unitTest.test]]
+### set new ipv4 addresses
+RPC = """
+<edit-config>
+    <target>
+        <running/>
+    </target>
+    <config>
+        <interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+            <interface>
+                <name>eth0</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <address>
+                        <ip>192.168.2.100</ip>
+                        <prefix-length>24</prefix-length>
+                    </address>
+                </ipv4>
+            </interface>
+            <interface>
+                <name>eth1</name>
+                <ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+                    <address>
+                        <ip>10.10.1.5</ip>
+                        <prefix-length>16</prefix-length>
+                    </address>
+                </ipv4>
+            </interface>
+        </interfaces>
+    </config>
+</edit-config>
+"""
+
+Reply = """<ok/>"""
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:ietf-interfaces='urn:ietf:params:xml:ns:yang:ietf-interfaces'  xmlns:ietf-ip='urn:ietf:params:xml:ns:yang:ietf-ip'  type="xpath" select="/ietf-interfaces:interfaces/interface[name='eth0']/ietf-ip:ipv4/address">
+    </filter>
+</get>
+"""
+
+Reply = """ don't know """
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:ietf-interfaces='urn:ietf:params:xml:ns:yang:ietf-interfaces'  xmlns:ietf-ip='urn:ietf:params:xml:ns:yang:ietf-ip'  type="xpath" select="/ietf-interfaces:interfaces/interface[name='eth1']/ietf-ip:ipv4/address">
+    </filter>
+</get>
+"""
+
+Reply = """ don't know """
+
+#[[unitTest.test]]
+#### don't know how to get info from uci currently
+#RPC = """
+#  <call xmlns="urn:ietf:params:xml:ns:yang:test-plugin">
+#    <command>uci show mtu</command>
+#  </call>
+#"""
+#
+#Reply = """<response xmlns="urn:ietf:params:xml:ns:yang:test-plugin">
+#don't know!!
+#</response>"""
