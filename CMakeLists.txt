@@ -69,5 +69,7 @@ find_package(SR_UCI REQUIRED)
 INCLUDE_DIRECTORIES(${SR_UCI_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${SR_UCI_LIBRARIES})
 
+# dependencies - json-c
+find_package(JSON-C REQUIRED)
 include_directories(${JSON-C_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} json-c)
