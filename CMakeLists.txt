@@ -64,5 +64,10 @@ find_package(LIBUBUS REQUIRED)
 include_directories(${LIBUBUS_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} ${LIBUBUS_LIBRARIES})
 
+# dependencies - sr_uci
+find_package(SR_UCI REQUIRED)
+INCLUDE_DIRECTORIES(${SR_UCI_INCLUDE_DIR})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${SR_UCI_LIBRARIES})
+
 include_directories(${JSON-C_INCLUDE_DIR})
 target_link_libraries(${CMAKE_PROJECT_NAME} json-c)
