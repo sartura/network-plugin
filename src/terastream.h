@@ -1,6 +1,8 @@
 #ifndef TERASTREAM_H
 #define TERASTREAM_H
 
+#include <sr_uci.h>
+
 #include "sysrepo.h"
 #include "sysrepo/values.h"
 #include "sysrepo/xpath.h"
@@ -20,13 +22,5 @@ typedef struct stored_ubus_data {
     json_object *n; // ubus call router.net ipv6_neigh
     json_object *tmp;
 } ubus_data;
-
-struct plugin_ctx {
-    struct uci_context *uctx;
-    sr_subscription_ctx_t *subscription;
-    sr_conn_ctx_t *startup_connection;
-    sr_session_ctx_t *startup_session;
-    ubus_data u_data;
-};
 
 #endif /* TERASTREAM_H */

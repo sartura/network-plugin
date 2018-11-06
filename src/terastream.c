@@ -8,10 +8,10 @@
 #include <libubox/blobmsg.h>
 #include <libubox/blobmsg_json.h>
 #include <json-c/json.h>
+#include <sr_uci.h>
 
 #include "terastream.h"
 #include "network.h"
-#include "common.h"
 #include "version.h"
 
 const char *YANG_MODEL = "ietf-interfaces";
@@ -58,13 +58,7 @@ static sfp_oper_mapping table_sfp_status[] = {
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
-static int config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value);
-
-/* Update UCI configuration given ucipath and some string value. */
-static int set_uci_item(struct uci_context *uctx, char *ucipath, char *value);
-
-/* Get value from UCI configuration given ucipath and result holder. */
-static int get_uci_item(struct uci_context *uctx, char *ucipath, char **value);
+static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value);
 
 /* get UCI boolean value */
 static bool parse_uci_bool(char *value)
@@ -163,84 +157,9 @@ cleanup:
     system("/etc/init.d/network reload > /dev/null");
 }
 
-char *get_key_value(char *orig_xpath, int n)
-{
-    char *key = NULL, *node = NULL;
-    sr_xpath_ctx_t state = {0, 0, 0, 0};
-    int counter = 0;
-
-    node = sr_xpath_next_node(orig_xpath, &state);
-    if (NULL == node) {
-        goto error;
-    }
-    while (true) {
-        key = sr_xpath_next_key_name(NULL, &state);
-        if (NULL != key) {
-            if (counter++ != n)
-                continue;
-            key = strdup(sr_xpath_next_key_value(NULL, &state));
-            break;
-        }
-        node = sr_xpath_next_node(NULL, &state);
-        if (NULL == node) {
-            break;
-        }
-    }
-
-error:
-    sr_xpath_recover(&state);
-    return key;
-}
-
-static int get_uci_item(struct uci_context *uctx, char *ucipath, char **value)
-{
-    int rc = UCI_OK;
-    char path[MAX_UCI_PATH];
-    struct uci_ptr ptr;
-
-    sprintf(path, "%s", ucipath);
-    rc = uci_lookup_ptr(uctx, &ptr, path, true);
-    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, path);
-
-    if (ptr.o == NULL) {
-        return UCI_ERR_NOTFOUND;
-    }
-
-    strcpy(*value, ptr.o->v.string);
-
-exit:
-    return rc;
-}
-
-static int set_uci_item(struct uci_context *uctx, char *ucipath, char *value)
-{
-    int rc = UCI_OK;
-    struct uci_ptr ptr;
-    char *set_path = calloc(1, MAX_UCI_PATH);
-
-    sprintf(set_path, "%s%s%s", ucipath, "=", value);
-
-    rc = uci_lookup_ptr(uctx, &ptr, set_path, true);
-    UCI_CHECK_RET(rc, exit, "lookup_pointer %d %s", rc, set_path);
-
-    rc = uci_set(uctx, &ptr);
-    UCI_CHECK_RET(rc, exit, "uci_set %d %s", rc, set_path);
-
-    rc = uci_save(uctx, ptr.p);
-    UCI_CHECK_RET(rc, exit, "uci_save %d %s", rc, set_path);
-
-    rc = uci_commit(uctx, &(ptr.p), false);
-    UCI_CHECK_RET(rc, exit, "uci_commit %d %s", rc, set_path);
-
-exit:
-    free(set_path);
-
-    return rc;
-}
-
 void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
-    struct plugin_ctx *pctx = req->priv;
+    sr_ctx_t *ctx = req->priv;
     struct json_object *r = NULL;
     char *json_result = NULL;
 
@@ -250,7 +169,8 @@ void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
     } else {
         goto cleanup;
     }
-    pctx->u_data.tmp = r;
+    ubus_data *u_data = (ubus_data *) ctx->data;
+    u_data->tmp = r;
 
 cleanup:
     if (NULL != json_result) {
@@ -259,35 +179,37 @@ cleanup:
     return;
 }
 
-static void clear_ubus_data(struct plugin_ctx *pctx)
+static void clear_ubus_data(sr_ctx_t *ctx)
 {
+    ubus_data *u_data = (ubus_data *) ctx->data;
     /* clear data out if it exists */
-    if (pctx->u_data.i) {
-        json_object_put(pctx->u_data.i);
-        pctx->u_data.i = NULL;
+    if (u_data->i) {
+        json_object_put(u_data->i);
+        u_data->i = NULL;
     }
-    if (pctx->u_data.d) {
-        json_object_put(pctx->u_data.d);
-        pctx->u_data.d = NULL;
+    if (u_data->d) {
+        json_object_put(u_data->d);
+        u_data->d = NULL;
     }
-    if (pctx->u_data.a) {
-        json_object_put(pctx->u_data.a);
-        pctx->u_data.a = NULL;
+    if (u_data->a) {
+        json_object_put(u_data->a);
+        u_data->a = NULL;
     }
-    if (pctx->u_data.n) {
-        json_object_put(pctx->u_data.n);
-        pctx->u_data.n = NULL;
+    if (u_data->n) {
+        json_object_put(u_data->n);
+        u_data->n = NULL;
     }
 }
 
-static int get_oper_interfaces(struct plugin_ctx *pctx)
+static int get_oper_interfaces(sr_ctx_t *ctx)
 {
     int rc = SR_ERR_OK;
     uint32_t id = 0;
     struct blob_buf buf = {0};
     int u_rc = UBUS_STATUS_OK;
+    ubus_data *u_data = (ubus_data *) ctx->data;
 
-    clear_ubus_data(pctx);
+    clear_ubus_data(ctx);
 
     struct ubus_context *u_ctx = ubus_connect(NULL);
     if (u_ctx == NULL) {
@@ -304,13 +226,13 @@ static int get_oper_interfaces(struct plugin_ctx *pctx)
         goto cleanup;
     }
 
-    u_rc = ubus_invoke(u_ctx, id, "status", buf.head, ubus_cb, pctx, 0);
+    u_rc = ubus_invoke(u_ctx, id, "status", buf.head, ubus_cb, ctx, 0);
     if (UBUS_STATUS_OK != u_rc) {
         ERR("ubus [%d]: no object status\n", u_rc);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
-    pctx->u_data.d = pctx->u_data.tmp;
+    u_data->d = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
@@ -321,13 +243,13 @@ static int get_oper_interfaces(struct plugin_ctx *pctx)
         goto cleanup;
     }
 
-    u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, pctx, 0);
+    u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, ctx, 0);
     if (UBUS_STATUS_OK != u_rc) {
         ERR("ubus [%d]: no object dump\n", u_rc);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
-    pctx->u_data.i = pctx->u_data.tmp;
+    u_data->i = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
@@ -338,13 +260,13 @@ static int get_oper_interfaces(struct plugin_ctx *pctx)
         goto cleanup;
     }
 
-    u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, pctx, 0);
+    u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, ctx, 0);
     if (UBUS_STATUS_OK != u_rc) {
         ERR("ubus [%d]: no object arp\n", u_rc);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
-    pctx->u_data.a = pctx->u_data.tmp;
+    u_data->a = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
@@ -355,13 +277,13 @@ static int get_oper_interfaces(struct plugin_ctx *pctx)
         goto cleanup;
     }
 
-    u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, pctx, 0);
+    u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, ctx, 0);
     if (UBUS_STATUS_OK != u_rc) {
         ERR("ubus [%d]: no object ipv6_neigh\n", u_rc);
         rc = SR_ERR_INTERNAL;
         goto cleanup;
     }
-    pctx->u_data.n = pctx->u_data.tmp;
+    u_data->n = u_data->tmp;
     blob_buf_free(&buf);
 
 cleanup:
@@ -372,14 +294,14 @@ cleanup:
     return rc;
 }
 
-static int config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping, sr_val_t *value)
+static int config_xpath_to_ucipath(sr_ctx_t *ctx, sr_uci_link *mapping, sr_val_t *value)
 {
     char *val_str = NULL;
     char ucipath[MAX_UCI_PATH];
     char xpath[MAX_XPATH];
-    int rc = SR_ERR_OK;
-    char *device_name = get_key_value(value->xpath, 0);
-    char *ip = get_key_value(value->xpath, 1);
+    int uci_rc, rc = SR_ERR_OK;
+    char *device_name = get_n_key_value(value->xpath, 0);
+    char *ip = get_n_key_value(value->xpath, 1);
 
     if (!device_name)
         goto exit;
@@ -399,8 +321,8 @@ static int config_xpath_to_ucipath(struct plugin_ctx *pctx, sr_uci_link *mapping
     INF("SET %s -> %s", xpath, val_str);
 
     sprintf(ucipath, mapping->ucipath, device_name);
-    rc = set_uci_item(pctx->uctx, ucipath, val_str);
-    UCI_CHECK_RET(rc, exit, "sr_get_item %s", sr_strerror(rc));
+    uci_rc = set_uci_item(ctx->uctx, ucipath, val_str);
+    UCI_CHECK_RET(uci_rc, &rc, exit, "get_uci_item %d %s", uci_rc, ucipath);
 
 exit:
     if (val_str)
@@ -413,7 +335,7 @@ exit:
     return rc;
 }
 
-static int config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value)
+static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value)
 {
     const int n_mappings = ARR_SIZE(table_sr_uci);
     int rc = SR_ERR_OK;
@@ -424,8 +346,8 @@ static int config_store_to_uci(struct plugin_ctx *pctx, sr_val_t *value)
 
     for (int i = 0; i < n_mappings; i++) {
         if (0 == strcmp(sr_xpath_node_name(value->xpath), sr_xpath_node_name(table_sr_uci[i].xpath))) {
-            rc = config_xpath_to_ucipath(pctx, &table_sr_uci[i], value);
-            SR_CHECK_RET(rc, error, "Failed to map xpath to ucipath: %s", sr_strerror(rc));
+            rc = config_xpath_to_ucipath(ctx, &table_sr_uci[i], value);
+            CHECK_RET(rc, error, "Failed to map xpath to ucipath: %s", sr_strerror(rc));
         }
     }
 
@@ -433,7 +355,7 @@ error:
     return rc;
 }
 
-static int parse_network_config(struct plugin_ctx *pctx)
+static int parse_network_config(sr_ctx_t *ctx)
 {
     struct uci_element *e;
     struct uci_section *s;
@@ -444,10 +366,10 @@ static int parse_network_config(struct plugin_ctx *pctx)
     };
     char *value = calloc(1, MAX_UCI_PATH);
     char *ip = NULL;
-    int rc;
+    int rc, uci_rc;
 
-    rc = uci_load(pctx->uctx, "network", &package);
-    UCI_CHECK_RET(rc, error, "uci_load %s error", "network");
+    uci_rc = uci_load(ctx->uctx, "network", &package);
+    UCI_CHECK_RET(uci_rc, &rc, error, "uci_load %d %s", uci_rc, "network");
 
     uci_foreach_element(&package->sections, e)
     {
@@ -463,8 +385,8 @@ static int parse_network_config(struct plugin_ctx *pctx)
 
             INF("processing interface %s", name);
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.proto", name);
-            rc = get_uci_item(pctx->uctx, ucipath, &value);
-            UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
+            uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
+            UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
             if (0 == strncmp("dhcpv6", value, strlen(value)))
                 ipv6 = true;
             if (0 == strncmp("dhcp", value, strlen("dhcp")))
@@ -472,28 +394,28 @@ static int parse_network_config(struct plugin_ctx *pctx)
             char *interface = ipv6 ? "6" : "4";
 
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
-            rc = get_uci_item(pctx->uctx, ucipath, &value);
+            rc = get_uci_item(ctx->uctx, ucipath, &value);
             if (rc != UCI_OK)
                 strcpy(value, "1500");
             snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/mtu", name, interface);
-            rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
+            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
 
             snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
-            rc = get_uci_item(pctx->uctx, ucipath, &value);
+            rc = get_uci_item(ctx->uctx, ucipath, &value);
             if (rc != UCI_OK)
                 parse_uci_bool(value) ? strcpy(value, "true") : strcpy(value, "false");
             snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/enabled", name, interface);
-            rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
+            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
 
             if (!dhcp) {
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
-                rc = get_uci_item(pctx->uctx, ucipath, &value);
-                UCI_CHECK_RET(rc, error, "get_uci_item %s", ucipath);
+                uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
+                UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
                 ip = strdup(value);
 
                 /* check if netmask exists, if not use prefix-length */
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
-                rc = get_uci_item(pctx->uctx, ucipath, &value);
+                rc = get_uci_item(ctx->uctx, ucipath, &value);
                 if (rc == UCI_OK) {
                     snprintf(xpath,
                              MAX_XPATH,
@@ -501,10 +423,10 @@ static int parse_network_config(struct plugin_ctx *pctx)
                              name,
                              interface,
                              ip);
-                    rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
+                    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
                 } else {
                     snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
-                    rc = get_uci_item(pctx->uctx, ucipath, &value);
+                    rc = get_uci_item(ctx->uctx, ucipath, &value);
                     if (rc != UCI_OK)
                         ipv6 ? strcpy(value, "64") : strcpy(value, "24");
                     snprintf(xpath,
@@ -513,13 +435,13 @@ static int parse_network_config(struct plugin_ctx *pctx)
                              name,
                              interface,
                              ip);
-                    rc = sr_set_item_str(pctx->startup_session, xpath, value, SR_EDIT_DEFAULT);
+                    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
                 }
             }
 
             sprintf(xpath, xpath_network_type_format, name);
-            rc = sr_set_item_str(pctx->startup_session, xpath, default_interface_type, SR_EDIT_DEFAULT);
-            SR_CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
+            rc = sr_set_item_str(ctx->startup_sess, xpath, default_interface_type, SR_EDIT_DEFAULT);
+            CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
 
             if (ip)
                 free(ip);
@@ -528,12 +450,12 @@ static int parse_network_config(struct plugin_ctx *pctx)
     }
 
     INF_MSG("commit the sysrepo changes");
-    rc = sr_commit(pctx->startup_session);
-    SR_CHECK_RET(rc, error, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
+    rc = sr_commit(ctx->startup_sess);
+    CHECK_RET(rc, error, "Couldn't commit initial interfaces: %s", sr_strerror(rc));
 
 error:
     if (package)
-        uci_unload(pctx->uctx, package);
+        uci_unload(ctx->uctx, package);
     free(value);
     if (ip)
         free(ip);
@@ -572,7 +494,7 @@ static void print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_v
     }
 }
 
-static int parse_change(sr_session_ctx_t *session, struct plugin_ctx *pctx, const char *module_name, sr_notif_event_t event)
+static int parse_change(sr_session_ctx_t *session, sr_ctx_t *ctx, const char *module_name, sr_notif_event_t event)
 {
     int rc = SR_ERR_OK;
     sr_change_oper_t oper;
@@ -594,7 +516,7 @@ static int parse_change(sr_session_ctx_t *session, struct plugin_ctx *pctx, cons
     while (SR_ERR_OK == sr_get_change_next(session, it, &oper, &old_value, &new_value)) {
         print_change(oper, old_value, new_value);
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
-            rc = config_store_to_uci(pctx, new_value);
+            rc = config_store_to_uci(ctx, new_value);
         }
         sr_free_val(old_value);
         sr_free_val(new_value);
@@ -611,14 +533,14 @@ error:
 static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     int rc = SR_ERR_OK;
-    struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
+    sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
     INF("%s configuration has changed.", YANG_MODEL);
 
     /* copy ietf-sytem running to startup */
     if (SR_EV_APPLY == event) {
         /* copy running datastore to startup */
 
-        rc = sr_copy_config(pctx->startup_session, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
+        rc = sr_copy_config(ctx->startup_sess, module_name, SR_DS_RUNNING, SR_DS_STARTUP);
         if (SR_ERR_OK != rc) {
             WRN_MSG("Failed to copy running datastore to startup");
             /* TODO handle this error */
@@ -628,7 +550,7 @@ static int module_change_cb(sr_session_ctx_t *session, const char *module_name, 
         return SR_ERR_OK;
     }
 
-    rc = parse_change(session, pctx, module_name, event);
+    rc = parse_change(session, ctx, module_name, event);
     CHECK_RET(rc, error, "failed to apply sysrepo: %s", sr_strerror(rc));
 
 error:
@@ -701,19 +623,20 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 #endif
 {
-    struct plugin_ctx *pctx = (struct plugin_ctx *) private_ctx;
-    (void) pctx;
+    sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
+    (void) ctx;
     size_t n_mappings;
     int rc = SR_ERR_OK;
     bool has_wan = false;
+    ubus_data *u_data = (ubus_data *) ctx->data;
 
     if (strlen(cb_xpath) > strlen("/ietf-interfaces:interfaces-state")) {
         return SR_ERR_OK;
     }
 
-    rc = get_oper_interfaces(pctx);
-    SR_CHECK_RET(rc, exit, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
-    /* copy json objects from ubus call network.device status to pctx->data */
+    rc = get_oper_interfaces(ctx);
+    CHECK_RET(rc, exit, "Couldn't initialize uci interfaces: %s", sr_strerror(rc));
+    /* copy json objects from ubus call network.device status to ctx->data */
 
     struct list_head list = LIST_HEAD_INIT(list);
     oper_func func;
@@ -724,7 +647,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 
         /* get interface list */
         struct json_object *r = NULL;
-        json_object_object_get_ex(pctx->u_data.i, "interface", &r);
+        json_object_object_get_ex(u_data->i, "interface", &r);
         if (NULL == r)
             continue;
 
@@ -736,19 +659,19 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
             json_object_object_get_ex(item, "interface", &n);
             if (NULL == n)
                 continue;
-            char *interface = json_object_get_string(n);
+            char *interface = (char *) json_object_get_string(n);
             if (0 == strncmp(interface, "wan", strlen(interface)))
                 has_wan = true;
-            rc = func(interface, &list, pctx->u_data);
+            rc = func(interface, &list, u_data);
         }
     }
     // hard code physical interfaces
-    rc = phy_interfaces_state("eth1", &list, pctx->u_data);
-    rc = phy_interfaces_state("eth2", &list, pctx->u_data);
-    rc = phy_interfaces_state("eth3", &list, pctx->u_data);
-    rc = phy_interfaces_state("eth4", &list, pctx->u_data);
-    rc = phy_interfaces_state("wl0", &list, pctx->u_data);
-    rc = phy_interfaces_state("wl1", &list, pctx->u_data);
+    rc = phy_interfaces_state("eth1", &list, u_data);
+    rc = phy_interfaces_state("eth2", &list, u_data);
+    rc = phy_interfaces_state("eth3", &list, u_data);
+    rc = phy_interfaces_state("eth4", &list, u_data);
+    rc = phy_interfaces_state("wl0", &list, u_data);
+    rc = phy_interfaces_state("wl1", &list, u_data);
 
     if (has_wan) {
         sfp_oper_func sfp_func;
@@ -771,7 +694,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     list_for_each_entry_safe(vn, q, &list, head)
     {
         rc = sr_dup_val_data(&(*values)[j], vn->value);
-        SR_CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
+        CHECK_RET(rc, exit, "Couldn't copy value: %s", sr_strerror(rc));
         j += 1;
         sr_free_val(vn->value);
         list_del(&vn->head);
@@ -790,11 +713,11 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     }
 
 exit:
-    clear_ubus_data(pctx);
+    clear_ubus_data(ctx);
     return rc;
 }
 
-static int sync_datastores(struct plugin_ctx *ctx)
+static int sync_datastores2(sr_ctx_t *ctx)
 {
     char startup_file[MAX_XPATH] = {0};
     int rc = SR_ERR_OK;
@@ -813,11 +736,11 @@ static int sync_datastores(struct plugin_ctx *ctx)
         /* parse uci config */
         INF_MSG("copy uci data to sysrepo");
         rc = parse_network_config(ctx);
-        SR_CHECK_RET(rc, error, "failed to apply uci data to sysrepo: %s", sr_strerror(rc));
+        CHECK_RET(rc, error, "failed to apply uci data to sysrepo: %s", sr_strerror(rc));
     } else {
         /* copy the sysrepo startup datastore to uci */
         INF_MSG("copy sysrepo data to uci");
-        SR_CHECK_RET(rc, error, "failed to apply sysrepo startup data to snabb: %s", sr_strerror(rc));
+        CHECK_RET(rc, error, "failed to apply sysrepo startup data to snabb: %s", sr_strerror(rc));
     }
 
 error:
@@ -827,54 +750,53 @@ error:
 int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     int rc = SR_ERR_OK;
-    struct plugin_ctx *ctx = calloc(1, sizeof(*ctx));
+    sr_ctx_t *ctx = calloc(1, sizeof(*ctx));
+    CHECK_NULL_MSG(ctx, &rc, error, "failed to calloc sr_ctx_t");
+    ctx->data = NULL;
+    ctx->uctx = NULL;
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
 
     /* Allocate UCI context for uci files. */
     ctx->uctx = uci_alloc_context();
-    if (!ctx->uctx) {
-        fprintf(stderr, "Can't allocate uci\n");
-        goto error;
-    }
+    CHECK_NULL_MSG(ctx->uctx, &rc, error, "failed to uci_alloc_context()");
+
+    ctx->data = calloc(1, sizeof(ubus_data));
+    CHECK_NULL_MSG(ctx->data, &rc, error, "failed to calloc ubus_data");
 
     INF_MSG("Connecting to sysrepo ...");
-    rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &ctx->startup_connection);
-    SR_CHECK_RET(rc, error, "Error by sr_connect: %s", sr_strerror(rc));
+    rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &ctx->startup_conn);
+    CHECK_RET(rc, error, "Error by sr_connect: %s", sr_strerror(rc));
 
-    rc = sr_session_start(ctx->startup_connection, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->startup_session);
-    SR_CHECK_RET(rc, error, "Error by sr_session_start: %s", sr_strerror(rc));
+    rc = sr_session_start(ctx->startup_conn, SR_DS_STARTUP, SR_SESS_DEFAULT, &ctx->startup_sess);
+    CHECK_RET(rc, error, "Error by sr_session_start: %s", sr_strerror(rc));
 
     *private_ctx = ctx;
 
     /* Init type for interface... */
-    rc = sync_datastores(ctx);
-    SR_CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
+    rc = sync_datastores2(ctx);
+    CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
-    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx, 0, SR_SUBSCR_DEFAULT, &ctx->subscription);
-    SR_CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
+    rc = sr_module_change_subscribe(session, "ietf-interfaces", module_change_cb, *private_ctx, 0, SR_SUBSCR_DEFAULT, &ctx->sub);
+    CHECK_RET(rc, error, "initialization error: %s", sr_strerror(rc));
 
     INF("sr_plugin_init_cb for sysrepo-plugin-dt-network %s", sr_strerror(rc));
 
     /* Operational data handling. */
     INF_MSG("Subscribing to operational data");
     rc = sr_dp_get_items_subscribe(
-        session, "/ietf-interfaces:interfaces-state", data_provider_interface_cb, *private_ctx, SR_SUBSCR_CTX_REUSE, &ctx->subscription);
-    SR_CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
+        session, "/ietf-interfaces:interfaces-state", data_provider_interface_cb, *private_ctx, SR_SUBSCR_CTX_REUSE, &ctx->sub);
+    CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
 
     rc = network_operational_start();
-    SR_CHECK_RET(rc, error, "Could not init ubus: %s", sr_strerror(rc));
+    CHECK_RET(rc, error, "Could not init ubus: %s", sr_strerror(rc));
 
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     return SR_ERR_OK;
 
 error:
     SRP_LOG_ERR("Plugin initialization failed: %s", sr_strerror(rc));
-    if (ctx->subscription) {
-        sr_unsubscribe(session, ctx->subscription);
-    }
-    free(ctx);
     return rc;
 }
 
@@ -884,20 +806,23 @@ void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
     if (!private_ctx)
         return;
 
-    struct plugin_ctx *ctx = private_ctx;
-    if (NULL != ctx->subscription) {
-        sr_unsubscribe(session, ctx->subscription);
+    sr_ctx_t *ctx = private_ctx;
+    if (NULL != ctx->sub) {
+        sr_unsubscribe(session, ctx->sub);
     }
-    if (NULL != ctx->startup_session) {
-        sr_session_stop(ctx->startup_session);
+    if (NULL != ctx->startup_sess) {
+        sr_session_stop(ctx->startup_sess);
     }
-    if (NULL != ctx->startup_connection) {
-        sr_disconnect(ctx->startup_connection);
+    if (NULL != ctx->startup_conn) {
+        sr_disconnect(ctx->startup_conn);
     }
     if (NULL != ctx->uctx) {
         uci_free_context(ctx->uctx);
     }
     network_operational_stop();
+    if (NULL != ctx->data) {
+        free(ctx->data);
+    }
     free(ctx);
 
     SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");
@@ -926,16 +851,16 @@ int main()
     /* connect to sysrepo */
     INF_MSG("Connecting to sysrepo ...");
     rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &connection);
-    SR_CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
+    CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
 
     /* start session */
     INF_MSG("Starting session ...");
     rc = sr_session_start(connection, SR_DS_RUNNING, SR_SESS_DEFAULT, &session);
-    SR_CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
+    CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
 
     INF_MSG("Initializing plugin ...");
     rc = sr_plugin_init_cb(session, &private_ctx);
-    SR_CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
+    CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
 
     /* loop until ctrl-c is pressed / SIGINT is received */
     signal(SIGINT, sigint_handler);
@@ -944,8 +869,8 @@ int main()
         sleep(1); /* or do some more useful work... */
     }
 
-    sr_plugin_cleanup_cb(session, private_ctx);
 cleanup:
+    sr_plugin_cleanup_cb(session, private_ctx);
     if (NULL != session) {
         sr_session_stop(session);
     }

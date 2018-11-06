@@ -1,7 +1,7 @@
+#include <sr_uci.h>
+
 #include "network.h"
 #include "terastream.h"
-
-#include "common.h"
 
 #define MAX_UBUS_PATH 100
 #define UBUS_INVOKE_TIMEOUT 2000
@@ -226,19 +226,19 @@ exit:
     return rc;
 }
 
-static int execute_base(const char *interface_name, struct list_head *list, ubus_data u_data, ubus_val_to_sr_val function)
+static int execute_base(const char *interface_name, struct list_head *list, ubus_data * u_data, ubus_val_to_sr_val function)
 {
     function(u_data, (char *) interface_name, list);
     return SR_ERR_OK;
 }
 
-static void operstatus_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void operstatus_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
     struct value_node *list_value;
 
-    struct json_object *obj = get_json_interface(u_data.i, interface_name);
+    struct json_object *obj = get_json_interface(u_data->i, interface_name);
     if (!obj)
         return;
 
@@ -259,16 +259,16 @@ static void operstatus_transform(ubus_data u_data, char *interface_name, struct 
     list_add(&list_value->head, list);
 }
 
-int network_operational_operstatus(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_operstatus(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, operstatus_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void mac_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void mac_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t;
     const char *ubus_result;
@@ -276,7 +276,7 @@ static void mac_transform(ubus_data u_data, char *interface_name, struct list_he
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
     char xpath[MAX_XPATH];
 
-    t = get_device_interface(u_data.i, u_data.d, interface_name);
+    t = get_device_interface(u_data->i, u_data->d, interface_name);
     if (!t)
         return;
 
@@ -295,16 +295,16 @@ static void mac_transform(ubus_data u_data, char *interface_name, struct list_he
     list_add(&list_value->head, list);
 }
 
-int network_operational_mac(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_mac(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, mac_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void rx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void rx_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t, *i;
     const char *ubus_result;
@@ -314,7 +314,7 @@ static void rx_transform(ubus_data u_data, char *interface_name, struct list_hea
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    i = get_device_interface(u_data.i, u_data.d, interface_name);
+    i = get_device_interface(u_data->i, u_data->d, interface_name);
     if (!i)
         return;
 
@@ -371,17 +371,17 @@ static void rx_transform(ubus_data u_data, char *interface_name, struct list_hea
     list_add(&list_value->head, list);
 }
 
-int network_operational_rx(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_rx(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
     /* Sets the value in ubus callback. */
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, rx_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void tx_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void tx_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t, *i;
     const char *ubus_result;
@@ -391,7 +391,7 @@ static void tx_transform(ubus_data u_data, char *interface_name, struct list_hea
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    i = get_device_interface(u_data.i, u_data.d, interface_name);
+    i = get_device_interface(u_data->i, u_data->d, interface_name);
     if (!i)
         return;
 
@@ -436,16 +436,16 @@ static void tx_transform(ubus_data u_data, char *interface_name, struct list_hea
     list_add(&list_value->head, list);
 }
 
-int network_operational_tx(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_tx(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, tx_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void mtu_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void mtu_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t, *i;
     const char *ubus_result;
@@ -454,7 +454,7 @@ static void mtu_transform(ubus_data u_data, char *interface_name, struct list_he
     const char *fmt6 = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/mtu";
     char xpath[MAX_XPATH];
 
-    i = get_device_interface(u_data.i, u_data.d, interface_name);
+    i = get_device_interface(u_data->i, u_data->d, interface_name);
     if (!i)
         return;
 
@@ -487,16 +487,16 @@ static void mtu_transform(ubus_data u_data, char *interface_name, struct list_he
     }
 }
 
-int network_operational_mtu(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_mtu(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, mtu_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void ip_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void ip_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     const char *ip;
     uint8_t prefix_length = 0;
@@ -504,7 +504,7 @@ static void ip_transform(ubus_data u_data, char *interface_name, struct list_hea
     struct value_node *list_value;
     char xpath[MAX_XPATH];
 
-    struct json_object *obj = get_json_interface(u_data.i, interface_name);
+    struct json_object *obj = get_json_interface(u_data->i, interface_name);
     if (!obj) {
         return;
     }
@@ -575,25 +575,25 @@ static void ip_transform(ubus_data u_data, char *interface_name, struct list_hea
     }
 }
 
-int network_operational_ip(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_ip(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
     /* Sets the value in ubus callback. */
 
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, ip_transform);
     }
 
     return SR_ERR_OK;
 }
 
-static void neigh6_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void neigh6_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *table, *iter_object;
     /* const char *ubus_result; */
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/neighbor[ip='%s']/%s";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(u_data.n, "neighbors", &table);
+    json_object_object_get_ex(u_data->n, "neighbors", &table);
     if (!table)
         return;
 
@@ -613,7 +613,7 @@ static void neigh6_transform(ubus_data u_data, char *interface_name, struct list
         device = json_object_get_string(device_obj);
         if (!device)
             continue;
-        if (!is_l3_member(u_data.i, u_data.d, interface_name, (char *) device))
+        if (!is_l3_member(u_data->i, u_data->d, interface_name, (char *) device))
             continue;
 
         json_object_object_get_ex(iter_object, "ip6addr", &ip_obj);
@@ -652,14 +652,14 @@ static void neigh6_transform(ubus_data u_data, char *interface_name, struct list
     }
 }
 
-static void neigh_transform(ubus_data u_data, char *interface_name, struct list_head *list)
+static void neigh_transform(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *table, *iter_object;
     /* const char *ubus_result; */
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(u_data.a, "table", &table);
+    json_object_object_get_ex(u_data->a, "table", &table);
     if (!table)
         return;
 
@@ -678,7 +678,7 @@ static void neigh_transform(ubus_data u_data, char *interface_name, struct list_
         device = json_object_get_string(device_obj);
         if (!device)
             continue;
-        if (!is_l3_member(u_data.i, u_data.d, interface_name, (char *) device))
+        if (!is_l3_member(u_data->i, u_data->d, interface_name, (char *) device))
             continue;
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
@@ -698,18 +698,18 @@ static void neigh_transform(ubus_data u_data, char *interface_name, struct list_
     }
 }
 
-int network_operational_neigh6(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_neigh6(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, neigh6_transform);
     }
 
     return SR_ERR_OK;
 }
 
-int network_operational_neigh(char *interface_name, struct list_head *list, ubus_data u_data)
+int network_operational_neigh(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, neigh_transform);
     }
 
@@ -878,7 +878,7 @@ int sfp_voltage(struct list_head *list)
     return SR_ERR_OK;
 }
 
-static void phy_interfaces_state_cb(ubus_data u_data, char *interface_name, struct list_head *list)
+static void phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     struct json_object *t, *i;
     const char *ubus_result;
@@ -888,7 +888,7 @@ static void phy_interfaces_state_cb(ubus_data u_data, char *interface_name, stru
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    json_object_object_foreach(u_data.d, key, val)
+    json_object_object_foreach(u_data->d, key, val)
     {
         if (0 == strcmp(key, interface_name) && strlen(key) == strlen(interface_name)) {
             i = val;
@@ -1024,9 +1024,9 @@ static void phy_interfaces_state_cb(ubus_data u_data, char *interface_name, stru
     list_add(&list_value->head, list);
 }
 
-int phy_interfaces_state(char *interface_name, struct list_head *list, ubus_data u_data)
+int phy_interfaces_state(char *interface_name, struct list_head *list, ubus_data * u_data)
 {
-    if (NULL != u_data.d) {
+    if (NULL != u_data->d) {
         return execute_base(interface_name, list, u_data, phy_interfaces_state_cb);
     }
 
