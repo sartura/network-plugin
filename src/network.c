@@ -482,7 +482,7 @@ static void mtu_transform(ubus_data * u_data, char *interface_name, struct list_
         sprintf(xpath, fmt6, interface_name);
         sr_val_set_xpath(list_value->value, xpath);
         list_value->value->type = SR_UINT32_T;
-        sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
+        sscanf(ubus_result, "%" PRIu32, &list_value->value->data.uint32_val);
         list_add(&list_value->head, list);
     }
 }
@@ -901,7 +901,7 @@ static void phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, st
     sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "type");
     sr_val_set_xpath(list_value->value, xpath);
-    sr_val_set_str_data(list_value->value, SR_STRING_T, "iana-if-type:ethernetCsmacd");
+    sr_val_set_str_data(list_value->value, SR_IDENTITYREF_T, "iana-if-type:ethernetCsmacd");
     list_add(&list_value->head, list);
 
     json_object_object_get_ex(i, "macaddr", &t);
