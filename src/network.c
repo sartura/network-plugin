@@ -249,7 +249,7 @@ static void operstatus_transform(ubus_data * u_data, char *interface_name, struc
 
     list_value = calloc(1, sizeof *list_value);
     sr_new_values(1, &list_value->value);
-    sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
+    sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
 
     char xpath[MAX_XPATH];
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/oper-status";
@@ -926,7 +926,7 @@ static void phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, st
         sr_new_values(1, &list_value->value);
         snprintf(xpath, MAX_XPATH, "%s%s", base, "oper-status");
         sr_val_set_xpath(list_value->value, xpath);
-        sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? strdup("up") : strdup("down"));
+        sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
         list_add(&list_value->head, list);
     }
 

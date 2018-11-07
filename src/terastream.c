@@ -365,7 +365,6 @@ static int parse_network_config(sr_ctx_t *ctx)
         0,
     };
     char *value = calloc(1, MAX_UCI_PATH);
-    char *ip = NULL;
     int rc, uci_rc;
 
     uci_rc = uci_load(ctx->uctx, "network", &package);
@@ -411,7 +410,6 @@ static int parse_network_config(sr_ctx_t *ctx)
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
                 uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
                 UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
-                ip = strdup(value);
 
                 /* check if netmask exists, if not use prefix-length */
                 snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
@@ -422,7 +420,7 @@ static int parse_network_config(sr_ctx_t *ctx)
                              "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/netmask",
                              name,
                              interface,
-                             ip);
+                             value);
                     rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
                 } else {
                     snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
@@ -434,7 +432,7 @@ static int parse_network_config(sr_ctx_t *ctx)
                              "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length",
                              name,
                              interface,
-                             ip);
+                             value);
                     rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
                 }
             }
@@ -442,10 +440,6 @@ static int parse_network_config(sr_ctx_t *ctx)
             sprintf(xpath, xpath_network_type_format, name);
             rc = sr_set_item_str(ctx->startup_sess, xpath, default_interface_type, SR_EDIT_DEFAULT);
             CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
-
-            if (ip)
-                free(ip);
-            ip = NULL;
         }
     }
 
@@ -457,8 +451,6 @@ error:
     if (package)
         uci_unload(ctx->uctx, package);
     free(value);
-    if (ip)
-        free(ip);
     return rc;
 }
 
