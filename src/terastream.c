@@ -106,36 +106,6 @@ static bool val_has_data(sr_type_t type)
 
 static void restart_network_over_ubus(int wait_time)
 {
-    /*
-    struct blob_buf buf = {0};
-    uint32_t id = 0;
-    int u_rc = 0;
-
-    struct ubus_context *u_ctx = ubus_connect(NULL);
-    if (u_ctx == NULL) {
-        ERR_MSG("Could not connect to ubus");
-        goto cleanup;
-    }
-
-    blob_buf_init(&buf, 0);
-    u_rc = ubus_lookup_id(u_ctx, "network", &id);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object network\n", u_rc);
-        goto cleanup;
-    }
-
-    u_rc = ubus_invoke(u_ctx, id, "restart", buf.head, NULL, NULL, wait_time * 1000);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object restart\n", u_rc);
-        goto cleanup;
-    }
-
-cleanup:
-    if (NULL != u_ctx) {
-        ubus_free(u_ctx);
-        blob_buf_free(&buf);
-    }
-    */
     system("/etc/init.d/network reload > /dev/null");
 }
 
@@ -202,69 +172,33 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "network.device", &id);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object network.device\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "network.device");
     u_rc = ubus_invoke(u_ctx, id, "status", buf.head, ubus_cb, ctx, 0);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object status\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "status");
     u_data->d = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "network.interface", &id);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object network.interaface\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "network.interface");
     u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, ctx, 0);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object dump\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "dump");
     u_data->i = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object router.net\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
     u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, ctx, 0);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object arp\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "arp");
     u_data->a = u_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object router.net\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
-
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
     u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, ctx, 0);
-    if (UBUS_STATUS_OK != u_rc) {
-        ERR("ubus [%d]: no object ipv6_neigh\n", u_rc);
-        rc = SR_ERR_INTERNAL;
-        goto cleanup;
-    }
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "ipv6_neigh");
     u_data->n = u_data->tmp;
     blob_buf_free(&buf);
 
@@ -599,7 +533,6 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 {
     sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
     (void) ctx;
-    size_t n_mappings;
     int rc = SR_ERR_OK;
     bool has_wan = false;
     ubus_data *u_data = (ubus_data *) ctx->data;

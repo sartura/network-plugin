@@ -206,21 +206,16 @@ static int ubus_base(const char *ubus_lookup_path, struct status_container *msg,
 {
     /* INF("list null %d", msg->list==NULL); */
     uint32_t id = 0;
+    int u_rc = UBUS_STATUS_OK;
     int rc = SR_ERR_OK;
 
-    rc = ubus_lookup_id(ctx, ubus_lookup_path, &id);
-    if (rc) {
-        INF("ubus [%d]: %s\n", rc, ubus_strerror(rc));
-        goto exit;
-    }
+    u_rc = ubus_lookup_id(ctx, ubus_lookup_path, &id);
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, ubus_lookup_path);
 
-    rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, UBUS_INVOKE_TIMEOUT);
-    if (rc) {
-        INF("ubus [%s]: no object %s\n", ubus_strerror(rc), msg->ubus_method);
-        goto exit;
-    }
+    u_rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, UBUS_INVOKE_TIMEOUT);
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, msg->ubus_method);
 
-exit:
+cleanup:
     blob_buf_free(blob);
 
     return rc;
@@ -813,16 +808,24 @@ int sfp_state_data(struct list_head *list)
 
     make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, list);
     rc = ubus_base("sfp.ddm", msg, &buf);
+    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
+    blob_buf_init(&buf, 0);
     make_status_container(&msg, "get-tx-pwr", sfp_tx_pwr_cb, list);
     rc = ubus_base("sfp.ddm", msg, &buf);
+    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
+    blob_buf_init(&buf, 0);
     make_status_container(&msg, "get-current", sfp_current_cb, list);
     rc = ubus_base("sfp.ddm", msg, &buf);
+    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
+    blob_buf_init(&buf, 0);
     make_status_container(&msg, "get-voltage", sfp_voltage_cb, list);
     rc = ubus_base("sfp.ddm", msg, &buf);
+    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
+cleanup:
     return rc;
 }
 
