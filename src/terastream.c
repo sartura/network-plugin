@@ -566,13 +566,23 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
             INF("operstatus_transform %s", sr_strerror(rc));
         }
     }
-    // hard code physical interfaces
-    rc = phy_interfaces_state_cb(u_data, "eth1", &list);
-    rc = phy_interfaces_state_cb(u_data, "eth2", &list);
-    rc = phy_interfaces_state_cb(u_data, "eth3", &list);
-    rc = phy_interfaces_state_cb(u_data, "eth4", &list);
-    rc = phy_interfaces_state_cb(u_data, "wl0", &list);
-    rc = phy_interfaces_state_cb(u_data, "wl1", &list);
+    // get list of bridge members and call phy_interfaces_state_cb
+    json_object_object_foreach(u_data->d, key, val)
+    {
+        // suppress unused warning
+        (void) (key);
+        json_object_object_get_ex(val, "bridge-members", &r);
+        if (NULL != r) {
+            int j = 0;
+            const int N = json_object_array_length(r);
+            for (j = 0; j < N; j++) {
+                json_object *item;
+                item = json_object_array_get_idx(r, j);
+                rc = phy_interfaces_state_cb(u_data, (char *) json_object_get_string(item), &list);
+                INF("phy_interfaces_state_cb %s", sr_strerror(rc));
+            }
+        }
+    }
 
     // get sfp state date
     if (has_wan) {
