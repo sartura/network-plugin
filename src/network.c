@@ -467,7 +467,12 @@ static void mtu_transform(ubus_data * u_data, char *interface_name, struct list_
     sprintf(xpath, fmt, interface_name);
     sr_val_set_xpath(list_value->value, xpath);
     list_value->value->type = SR_UINT16_T;
-    sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
+    // fix 65536 > (2 ^ 16 - 1)
+    if (0 == strcmp("65536", ubus_result)) {
+        list_value->value->data.uint16_val =  65535;
+    } else {
+        sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
+    }
     list_add(&list_value->head, list);
 
     json_object_object_get_ex(i, "ipv6", &t);
