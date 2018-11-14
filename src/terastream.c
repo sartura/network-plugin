@@ -39,24 +39,6 @@ static sr_uci_link table_sr_uci[] = {
 static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
 static const char *default_interface_type = "iana-if-type:ethernetCsmacd";
 
-static oper_mapping table_interface_status[] = {
-    {"oper-status", network_operational_operstatus},
-    {"phys-address", network_operational_mac},
-    {"out-octets", network_operational_rx},
-    {"in-octets", network_operational_tx},
-    {"mtu", network_operational_mtu},
-    {"ip", network_operational_ip},
-    {"neighbor", network_operational_neigh},
-    {"neighbor6", network_operational_neigh6},
-};
-
-static sfp_oper_mapping table_sfp_status[] = {
-    {"rx-pwr", sfp_rx_pwr},
-    {"tx-pwr", sfp_tx_pwr},
-    {"voltage", sfp_voltage},
-    {"current", sfp_current},
-};
-
 /* Update UCI configuration from Sysrepo datastore. */
 static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value);
 
@@ -631,18 +613,11 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     /* copy json objects from ubus call network.device status to ctx->data */
 
     struct list_head list = LIST_HEAD_INIT(list);
-    oper_func func;
-    n_mappings = ARR_SIZE(table_interface_status);
 
-    for (size_t i = 0; i < n_mappings; i++) {
-        func = table_interface_status[i].op_func;
-
-        /* get interface list */
-        struct json_object *r = NULL;
-        json_object_object_get_ex(u_data->i, "interface", &r);
-        if (NULL == r)
-            continue;
-
+    /* get interface list */
+    struct json_object *r = NULL;
+    json_object_object_get_ex(u_data->i, "interface", &r);
+    if (NULL != r) {
         int j;
         const int N = json_object_array_length(r);
         for (j = 0; j < N; j++) {
@@ -654,24 +629,21 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
             char *interface = (char *) json_object_get_string(n);
             if (0 == strncmp(interface, "wan", strlen(interface)))
                 has_wan = true;
-            rc = func(interface, &list, u_data);
+            rc = operstatus_transform(u_data, interface, &list);
+            INF("operstatus_transform %s", sr_strerror(rc));
         }
     }
     // hard code physical interfaces
-    rc = phy_interfaces_state("eth1", &list, u_data);
-    rc = phy_interfaces_state("eth2", &list, u_data);
-    rc = phy_interfaces_state("eth3", &list, u_data);
-    rc = phy_interfaces_state("eth4", &list, u_data);
-    rc = phy_interfaces_state("wl0", &list, u_data);
-    rc = phy_interfaces_state("wl1", &list, u_data);
+    rc = phy_interfaces_state_cb(u_data, "eth1", &list);
+    rc = phy_interfaces_state_cb(u_data, "eth2", &list);
+    rc = phy_interfaces_state_cb(u_data, "eth3", &list);
+    rc = phy_interfaces_state_cb(u_data, "eth4", &list);
+    rc = phy_interfaces_state_cb(u_data, "wl0", &list);
+    rc = phy_interfaces_state_cb(u_data, "wl1", &list);
 
+    // get sfp state date
     if (has_wan) {
-        sfp_oper_func sfp_func;
-        n_mappings = ARR_SIZE(table_sfp_status);
-        for (size_t i = 0; i < n_mappings; i++) {
-            sfp_func = table_sfp_status[i].op_func;
-            rc = sfp_func(&list);
-        }
+        rc = sfp_state_data(&list);
     }
 
     size_t cnt = 0;
