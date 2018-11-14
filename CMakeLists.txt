@@ -10,6 +10,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wall")
 
 set(SOURCES
   src/terastream.c
+  src/openwrt.c
   src/network.c)
 
 # git SHA1 hash

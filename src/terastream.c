@@ -33,6 +33,7 @@
 
 #include "terastream.h"
 #include "network.h"
+#include "openwrt.h"
 #include "version.h"
 
 const char *YANG_MODEL = "ietf-interfaces";
@@ -209,19 +210,31 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
-    u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, ctx, 0);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "arp");
-    u_data->a = u_data->tmp;
-    blob_buf_free(&buf);
+    if (UBUS_STATUS_NOT_FOUND == u_rc) {
+        INF_MSG("using generic functions");
+        rc = openwrt_rap(u_data->a);
+        CHECK_RET_MSG(rc, cleanup, "failed openwrt_arp()");
+    } else {
+        UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
+        u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, ctx, 0);
+        UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "arp");
+        u_data->a = u_data->tmp;
+        blob_buf_free(&buf);
+    }
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
-    u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, ctx, 0);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "ipv6_neigh");
-    u_data->n = u_data->tmp;
-    blob_buf_free(&buf);
+    if (UBUS_STATUS_NOT_FOUND == u_rc) {
+        INF_MSG("using generic functions");
+        rc = openwrt_ipv6_neigh(u_data->n);
+        CHECK_RET_MSG(rc, cleanup, "failed openwrt_ipv6_neigh()");
+    } else {
+        UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
+        u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, ctx, 0);
+        UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "ipv6_neigh");
+        u_data->n = u_data->tmp;
+        blob_buf_free(&buf);
+    }
 
 cleanup:
     if (NULL != u_ctx) {
