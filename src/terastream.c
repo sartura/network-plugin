@@ -370,38 +370,6 @@ error:
     return rc;
 }
 
-static void print_change(sr_change_oper_t op, sr_val_t *old_val, sr_val_t *new_val)
-{
-    switch (op) {
-        case SR_OP_CREATED:
-            if (NULL != new_val) {
-                printf("CREATED: ");
-                sr_print_val(new_val);
-            }
-            break;
-        case SR_OP_DELETED:
-            if (NULL != old_val) {
-                printf("DELETED: ");
-                sr_print_val(old_val);
-            }
-            break;
-        case SR_OP_MODIFIED:
-            if (NULL != old_val && NULL != new_val) {
-                printf("MODIFIED: ");
-                printf("old value ");
-                sr_print_val(old_val);
-                printf("new value ");
-                sr_print_val(new_val);
-            }
-            break;
-        case SR_OP_MOVED:
-            if (NULL != new_val) {
-                printf("MOVED: %s after %s", new_val->xpath, NULL != old_val ? old_val->xpath : NULL);
-            }
-            break;
-    }
-}
-
 static int parse_change(sr_session_ctx_t *session, sr_ctx_t *ctx, const char *module_name, sr_notif_event_t event)
 {
     int rc = SR_ERR_OK;
@@ -422,7 +390,6 @@ static int parse_change(sr_session_ctx_t *session, sr_ctx_t *ctx, const char *mo
     }
 
     while (SR_ERR_OK == sr_get_change_next(session, it, &oper, &old_value, &new_value)) {
-        print_change(oper, old_value, new_value);
         if (SR_OP_CREATED == oper || SR_OP_MODIFIED == oper) {
             rc = config_store_to_uci(ctx, new_value);
         }
