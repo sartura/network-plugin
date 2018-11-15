@@ -613,12 +613,12 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 
     list_del(&list);
 
-    if (*values_cnt > 0) {
-        INF("Debug sysrepo values printout: %zu", *values_cnt);
-        for (size_t i = 0; i < *values_cnt; i++) {
-            sr_print_val(&(*values)[i]);
-        }
-    }
+    //if (*values_cnt > 0) {
+    //    INF("Debug sysrepo values printout: %zu", *values_cnt);
+    //    for (size_t i = 0; i < *values_cnt; i++) {
+    //        sr_print_val(&(*values)[i]);
+    //    }
+    //}
 
 exit:
     clear_ubus_data(ctx);

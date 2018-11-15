@@ -51,6 +51,87 @@ static char *remove_unit(const char *str)
     return number;
 }
 
+struct value_node *insert_node(struct list_head *list, char *xpath) {
+    int rc = SR_ERR_OK;
+    struct value_node *list_value = NULL;
+
+    list_value = calloc(1, sizeof *list_value);
+    CHECK_NULL_MSG(list_value, &rc, cleanup, "failed to calloc list_value");
+    sr_new_val(xpath, &list_value->value);
+    CHECK_NULL_MSG(list_value->value, &rc, cleanup, "failed sr_new_value");
+
+    list_add(&list_value->head, list);
+
+cleanup:
+    return list_value;
+}
+
+int insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_name, sr_type_t sr_type, char *xpath) {
+    int rc = SR_ERR_OK;
+    double res = 0;
+    char *end = NULL;
+    const char *ubus_result = NULL;
+    struct json_object *item = NULL;
+    struct value_node *list_value = NULL;
+
+    json_object_object_get_ex(jobj, j_name, &item);
+    CHECK_NULL(jobj, &rc, cleanup, "failed json_object_object_get_ex for %s", j_name);
+
+    ubus_result = json_object_get_string(item);
+    CHECK_NULL_MSG(ubus_result, &rc, cleanup, "failed json_object_get_string");
+
+    list_value = insert_node(list, xpath);
+    CHECK_NULL_MSG(list_value, &rc, cleanup, "failed insert_node");
+
+    list_value->value->type = sr_type;
+    switch (sr_type) {
+        case SR_BINARY_T:
+        case SR_BITS_T:
+        case SR_ENUM_T:
+        case SR_IDENTITYREF_T:
+        case SR_INSTANCEID_T:
+        case SR_STRING_T:
+            sr_val_set_str_data(list_value->value, sr_type, ubus_result);
+            break;
+        case SR_BOOL_T:
+        case SR_DECIMAL64_T:
+            strtod(remove_unit(ubus_result), &end);
+            list_value->value->data.decimal64_val = res;
+            break;
+        case SR_INT8_T:
+            sscanf(ubus_result, "%" SCNd8, &list_value->value->data.int8_val);
+            break;
+        case SR_INT16_T:
+            sscanf(ubus_result, "%" SCNd16, &list_value->value->data.int16_val);
+            break;
+        case SR_INT32_T:
+            sscanf(ubus_result, "%" SCNd32, &list_value->value->data.int32_val);
+            break;
+        case SR_INT64_T:
+            sscanf(ubus_result, "%" SCNd64, &list_value->value->data.int64_val);
+            break;
+        case SR_UINT8_T:
+            sscanf(ubus_result, "%hhu", &list_value->value->data.uint8_val);
+            break;
+        case SR_UINT16_T:
+            sscanf(ubus_result, "%hu", &list_value->value->data.uint16_val);
+            break;
+        case SR_UINT32_T:
+            sscanf(ubus_result, "%" PRIu32, &list_value->value->data.uint32_val);
+            break;
+        case SR_UINT64_T:
+            sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
+            break;
+        case SR_TREE_ITERATOR_T:
+        default:
+            rc = SR_ERR_INTERNAL;
+            break;
+    }
+
+cleanup:
+    return rc;
+}
+
 static char *transform_state(const char *name)
 {
     if (0 == strcmp(name, "INCOMPLETE")) {
@@ -114,6 +195,8 @@ struct json_object *get_device_interface(json_object *i, json_object *d, char *n
     for (j = 0; j < N; j++) {
         json_object *item, *tmp;
         item = json_object_array_get_idx(r, j);
+        if (NULL == item)
+            continue;
         json_object_object_get_ex(item, "interface", &tmp);
         if (NULL == tmp)
             continue;
@@ -245,188 +328,110 @@ cleanup:
 static int network_operational_operstatus(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
-    struct json_object *t;
+    struct json_object *t, *obj;
     const char *ubus_result;
     struct value_node *list_value;
+    char xpath[MAX_XPATH];
 
-    struct json_object *obj = get_json_interface(u_data->i, interface_name);
-    if (!obj)
-        return rc;
+    obj = get_json_interface(u_data->i, interface_name);
+    CHECK_NULL_MSG(obj, &rc, cleanup, "failed get_json_interface()");
 
     json_object_object_get_ex(obj, "up", &t);
+    CHECK_NULL(t, &rc, cleanup, "failed json_object_object_get_ex for %s", "up");
     ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
+    CHECK_NULL_MSG(ubus_result, &rc, cleanup, "failed json_object_get_string");
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
-
-    char xpath[MAX_XPATH];
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/oper-status";
     sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
+    list_value = insert_node(list, xpath);
+    CHECK_NULL_MSG(list_value, &rc, cleanup, "failed insert_node");
+    sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
 
-    list_add(&list_value->head, list);
-
+cleanup:
     return rc;
 }
 
 static int network_operational_mac(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+    struct json_object *i;
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
     char xpath[MAX_XPATH];
 
-    t = get_device_interface(u_data->i, u_data->d, interface_name);
-    if (!t)
-        return rc;
-
-    json_object_object_get_ex(t, "macaddr", &t);
-    if (!t)
-        return rc;
-    ubus_result = json_object_get_string(t);
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
+    i = get_device_interface(u_data->i, u_data->d, interface_name);
+    CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     sprintf(xpath, fmt, interface_name);
-    sr_val_set_xpath(list_value->value, xpath);
-    sr_val_set_str_data(list_value->value, SR_STRING_T, ubus_result);
+    rc = insert_sr_node(list, i, "macaddr", SR_STRING_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    list_add(&list_value->head, list);
-
+cleanup:
     return rc;
 }
 
 static int network_operational_rx(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
-    struct json_object *t, *i;
-    const char *ubus_result;
-    struct value_node *list_value;
+    struct json_object *i;
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/";
     char xpath[MAX_XPATH], base[MAX_XPATH];
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
     i = get_device_interface(u_data->i, u_data->d, interface_name);
-    if (!i)
-        return rc;
+    CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     json_object_object_get_ex(i, "statistics", &i);
-    if (!i)
-        return rc;
+    CHECK_NULL(i, &rc, cleanup, "failed json_object_object_get_ex for %s", "statistics");
 
-    json_object_object_get_ex(i, "rx_bytes", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-octets");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_bytes", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "rx_dropped", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-discards");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_dropped", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "rx_errors", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-errors");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_errors", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "multicast", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "out-multicast-pkts");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "multicast", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
+cleanup:
     return rc;
 }
 
 static int network_operational_tx(ubus_data * u_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
-    struct json_object *t, *i;
-    const char *ubus_result;
-    struct value_node *list_value;
+    struct json_object *i;
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/statistics/";
     char xpath[MAX_XPATH], base[MAX_XPATH];
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
     i = get_device_interface(u_data->i, u_data->d, interface_name);
-    if (!i)
-        return rc;
+    CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     json_object_object_get_ex(i, "statistics", &i);
-    if (!i)
-        return rc;
+    CHECK_NULL(i, &rc, cleanup, "failed json_object_object_get_ex for %s", "statistics");
 
-    json_object_object_get_ex(i, "tx_bytes", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "in-octets");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_bytes", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "tx_dropped", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "in-discards");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_dropped", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "tx_errors", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "in-errors");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_errors", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
+cleanup:
     return rc;
 }
 
@@ -571,8 +576,7 @@ static int network_operational_neigh6(ubus_data * u_data, char *interface_name, 
     char xpath[MAX_XPATH];
 
     json_object_object_get_ex(u_data->n, "neighbors", &table);
-    if (!table)
-        return rc;
+    CHECK_NULL(table, &rc, cleanup, "failed json_object_object_get_ex for %s", "neighbors");
 
     /* Get ip and mask (prefix length) from address. */
     const int N = json_object_array_length(table);
@@ -628,6 +632,7 @@ static int network_operational_neigh6(ubus_data * u_data, char *interface_name, 
         list_add(&list_value->head, list);
     }
 
+cleanup:
     return rc;
 }
 
@@ -640,8 +645,7 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
     char xpath[MAX_XPATH];
 
     json_object_object_get_ex(u_data->a, "table", &table);
-    if (!table)
-        return rc;
+    CHECK_NULL_MSG(table, &rc, cleanup, "failed json_object_object_get_ex");
 
     /* Get ip and mask (prefix length) from address. */
     const int N = json_object_array_length(table);
@@ -655,6 +659,8 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
             continue;
 
         json_object_object_get_ex(iter_object, "device", &device_obj);
+        if (!device_obj)
+            continue;
         device = json_object_get_string(device_obj);
         if (!device)
             continue;
@@ -662,14 +668,17 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
             continue;
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
+        if (!ip_obj)
+            continue;
         json_object_object_get_ex(iter_object, "macaddr", &mac_obj);
+        if (!mac_obj)
+            continue;
         ip = json_object_get_string(ip_obj);
         mac = json_object_get_string(mac_obj);
         if (!ip || !mac)
             continue;
 
         sprintf(xpath, fmt, interface_name, ip);
-        printf("XPATH %s\n", xpath);
         list_value = calloc(1, sizeof *list_value);
         sr_new_values(1, &list_value->value);
         sr_val_set_xpath(list_value->value, xpath);
@@ -677,6 +686,7 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
         list_add(&list_value->head, list);
     }
 
+cleanup:
     return rc;
 }
 
@@ -713,112 +723,50 @@ cleanup:
 
 static void sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
 {
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+    int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:rx-pwr";
 
-    json_object_object_get_ex(obj, "rx-pwr", &t);
-    if (!t) {
-        return;
-    }
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return;
+    rc = insert_sr_node(list, obj, "rx-pwr", SR_DECIMAL64_T, (char *) fmt);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, fmt);
-
-    char *end = NULL;
-    double res = strtod(remove_unit(ubus_result), &end);
-    list_value->value->type = SR_DECIMAL64_T;
-    list_value->value->data.decimal64_val = res;
-
-    list_add(&list_value->head, list);
+cleanup:
+    return;
 }
 
 static void sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
 {
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+    int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:tx-pwr";
 
-    json_object_object_get_ex(obj, "tx-pwr", &t);
-    if (!t) {
-        return;
-    }
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return;
+    rc = insert_sr_node(list, obj, "tx-pwr", SR_DECIMAL64_T, (char *) fmt);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, fmt);
-
-    char *end = NULL;
-    double res = strtod(remove_unit(ubus_result), &end);
-    list_value->value->type = SR_DECIMAL64_T;
-    list_value->value->data.decimal64_val = res;
-
-    list_add(&list_value->head, list);
+cleanup:
+    return;
 }
 
 static void sfp_current_cb(struct json_object *obj, struct list_head *list)
 {
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+    int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:current";
 
-    json_object_object_get_ex(obj, "current", &t);
-    if (!t) {
-        return;
-    }
+    rc = insert_sr_node(list, obj, "current", SR_DECIMAL64_T, (char *) fmt);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return;
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, fmt);
-
-    char *end = NULL;
-    double res = strtod(remove_unit(ubus_result), &end);
-    list_value->value->type = SR_DECIMAL64_T;
-    list_value->value->data.decimal64_val = res;
-
-    list_add(&list_value->head, list);
+cleanup:
+    return;
 }
 
 static void sfp_voltage_cb(struct json_object *obj, struct list_head *list)
 {
-    struct json_object *t;
-    const char *ubus_result;
-    struct value_node *list_value;
+    int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:voltage";
 
-    json_object_object_get_ex(obj, "voltage", &t);
-    if (!t) {
-        return;
-    }
+    rc = insert_sr_node(list, obj, "voltage", SR_DECIMAL64_T, (char *) fmt);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return;
-
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
-    sr_val_set_xpath(list_value->value, fmt);
-
-    char *end = NULL;
-    double res = strtod(remove_unit(ubus_result), &end);
-    list_value->value->type = SR_DECIMAL64_T;
-    list_value->value->data.decimal64_val = res;
-
-    list_add(&list_value->head, list);
+cleanup:
+    return;
 }
 
 int sfp_state_data(struct list_head *list)
@@ -870,131 +818,57 @@ int phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, struct lis
     }
 
     /* add type */
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "type");
+    list_value = insert_node(list, xpath);
+    CHECK_NULL_MSG(list_value, &rc, cleanup, "failed insert_node");
     sr_val_set_xpath(list_value->value, xpath);
     sr_val_set_str_data(list_value->value, SR_IDENTITYREF_T, "iana-if-type:ethernetCsmacd");
-    list_add(&list_value->head, list);
 
-    json_object_object_get_ex(i, "macaddr", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result) {
-        return rc;
-    }
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "phys-address");
-    sr_val_set_xpath(list_value->value, xpath);
-    sr_val_set_str_data(list_value->value, SR_STRING_T, ubus_result);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "macaddr", SR_STRING_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    if (0 != strcmp(interface_name, "wl0") && 0 != strcmp(interface_name, "wl1")) {
-        json_object_object_get_ex(i, "carrier", &t);
-        ubus_result = json_object_get_string(t);
-        if (!ubus_result) {
-            return rc;
-        }
-        list_value = calloc(1, sizeof *list_value);
-        sr_new_values(1, &list_value->value);
-        snprintf(xpath, MAX_XPATH, "%s%s", base, "oper-status");
-        sr_val_set_xpath(list_value->value, xpath);
-        sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
-        list_add(&list_value->head, list);
-    }
+    json_object_object_get_ex(i, "carrier", &t);
+    CHECK_NULL_MSG(t, &rc, cleanup, "failed json_object_object_get_ex");
+    ubus_result = json_object_get_string(t);
+    CHECK_NULL_MSG(ubus_result, &rc, cleanup, "failed json_object_get_string");
+    snprintf(xpath, MAX_XPATH, "%s%s", base, "oper-status");
+    list_value = insert_node(list, xpath);
+    CHECK_NULL_MSG(list_value, &rc, cleanup, "failed insert_node");
+    sr_val_set_xpath(list_value->value, xpath);
+    sr_val_set_str_data(list_value->value, SR_ENUM_T, !strcmp(ubus_result, "true") ? "up" : "down");
 
     /* get statistics data */
     json_object_object_get_ex(i, "statistics", &i);
-    if (!i)
-        return rc;
-
-    json_object_object_get_ex(i, "rx_bytes", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result) {
-        return rc;
-    }
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
+    CHECK_NULL_MSG(i, &rc, cleanup, "failed json_object_object_get_ex");
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-octets");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_bytes", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "rx_dropped", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result) {
-        return rc;
-    }
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-discards");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_dropped", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "rx_errors", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result) {
-        return rc;
-    }
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-errors");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "rx_errors", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "multicast", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result) {
-        return rc;
-    }
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/out-multicast-pkts");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "multicast", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "tx_bytes", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-octets");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT64_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_bytes", SR_UINT64_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "tx_dropped", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-discards");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_dropped", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
-    json_object_object_get_ex(i, "tx_errors", &t);
-    ubus_result = json_object_get_string(t);
-    if (!ubus_result)
-        return rc;
-    list_value = calloc(1, sizeof *list_value);
-    sr_new_values(1, &list_value->value);
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-errors");
-    sr_val_set_xpath(list_value->value, xpath);
-    list_value->value->type = SR_UINT32_T;
-    sscanf(ubus_result, "%" PRIu64, &list_value->value->data.uint64_val);
-    list_add(&list_value->head, list);
+    rc = insert_sr_node(list, i, "tx_errors", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
+cleanup:
     return rc;
 }
