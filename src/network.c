@@ -325,7 +325,7 @@ cleanup:
     return rc;
 }
 
-static int network_operational_operstatus(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_operstatus(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *obj;
@@ -333,7 +333,7 @@ static int network_operational_operstatus(ubus_data * u_data, char *interface_na
     struct value_node *list_value;
     char xpath[MAX_XPATH];
 
-    obj = get_json_interface(u_data->i, interface_name);
+    obj = get_json_interface(p_data->i, interface_name);
     CHECK_NULL_MSG(obj, &rc, cleanup, "failed get_json_interface()");
 
     json_object_object_get_ex(obj, "up", &t);
@@ -351,14 +351,14 @@ cleanup:
     return rc;
 }
 
-static int network_operational_mac(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_mac(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
     char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/phys-address";
     char xpath[MAX_XPATH];
 
-    i = get_device_interface(u_data->i, u_data->d, interface_name);
+    i = get_device_interface(p_data->i, p_data->d, interface_name);
     CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     sprintf(xpath, fmt, interface_name);
@@ -369,7 +369,7 @@ cleanup:
     return rc;
 }
 
-static int network_operational_rx(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_rx(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
@@ -378,7 +378,7 @@ static int network_operational_rx(ubus_data * u_data, char *interface_name, stru
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    i = get_device_interface(u_data->i, u_data->d, interface_name);
+    i = get_device_interface(p_data->i, p_data->d, interface_name);
     CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     json_object_object_get_ex(i, "statistics", &i);
@@ -404,7 +404,7 @@ cleanup:
     return rc;
 }
 
-static int network_operational_tx(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_tx(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
@@ -413,7 +413,7 @@ static int network_operational_tx(ubus_data * u_data, char *interface_name, stru
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    i = get_device_interface(u_data->i, u_data->d, interface_name);
+    i = get_device_interface(p_data->i, p_data->d, interface_name);
     CHECK_NULL_MSG(i, &rc, cleanup, "failed get_device_interface()");
 
     json_object_object_get_ex(i, "statistics", &i);
@@ -435,7 +435,7 @@ cleanup:
     return rc;
 }
 
-static int network_operational_mtu(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_mtu(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *i;
@@ -445,7 +445,7 @@ static int network_operational_mtu(ubus_data * u_data, char *interface_name, str
     const char *fmt6 = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/mtu";
     char xpath[MAX_XPATH];
 
-    i = get_device_interface(u_data->i, u_data->d, interface_name);
+    i = get_device_interface(p_data->i, p_data->d, interface_name);
     if (!i)
         return rc;
 
@@ -485,7 +485,7 @@ static int network_operational_mtu(ubus_data * u_data, char *interface_name, str
     return rc;
 }
 
-static int network_operational_ip(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_ip(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *ip;
@@ -494,7 +494,7 @@ static int network_operational_ip(ubus_data * u_data, char *interface_name, stru
     struct value_node *list_value;
     char xpath[MAX_XPATH];
 
-    struct json_object *obj = get_json_interface(u_data->i, interface_name);
+    struct json_object *obj = get_json_interface(p_data->i, interface_name);
     if (!obj) {
         return rc;
     }
@@ -567,7 +567,7 @@ static int network_operational_ip(ubus_data * u_data, char *interface_name, stru
     return rc;
 }
 
-static int network_operational_neigh6(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_neigh6(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *table, *iter_object;
@@ -575,7 +575,7 @@ static int network_operational_neigh6(ubus_data * u_data, char *interface_name, 
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv6/neighbor[ip='%s']/%s";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(u_data->n, "neighbors", &table);
+    json_object_object_get_ex(p_data->n, "neighbors", &table);
     CHECK_NULL(table, &rc, cleanup, "failed json_object_object_get_ex for %s", "neighbors");
 
     /* Get ip and mask (prefix length) from address. */
@@ -594,7 +594,7 @@ static int network_operational_neigh6(ubus_data * u_data, char *interface_name, 
         device = json_object_get_string(device_obj);
         if (!device)
             continue;
-        if (!is_l3_member(u_data->i, u_data->d, interface_name, (char *) device))
+        if (!is_l3_member(p_data->i, p_data->d, interface_name, (char *) device))
             continue;
 
         json_object_object_get_ex(iter_object, "ip6addr", &ip_obj);
@@ -636,7 +636,7 @@ cleanup:
     return rc;
 }
 
-static int network_operational_neigh(ubus_data * u_data, char *interface_name, struct list_head *list)
+static int network_operational_neigh(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *table, *iter_object;
@@ -644,7 +644,7 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='%s']/ietf-ip:ipv4/neighbor[ip='%s']/link-layer-address";
     char xpath[MAX_XPATH];
 
-    json_object_object_get_ex(u_data->a, "table", &table);
+    json_object_object_get_ex(p_data->a, "table", &table);
     CHECK_NULL_MSG(table, &rc, cleanup, "failed json_object_object_get_ex");
 
     /* Get ip and mask (prefix length) from address. */
@@ -664,7 +664,7 @@ static int network_operational_neigh(ubus_data * u_data, char *interface_name, s
         device = json_object_get_string(device_obj);
         if (!device)
             continue;
-        if (!is_l3_member(u_data->i, u_data->d, interface_name, (char *) device))
+        if (!is_l3_member(p_data->i, p_data->d, interface_name, (char *) device))
             continue;
 
         json_object_object_get_ex(iter_object, "ipaddr", &ip_obj);
@@ -690,35 +690,44 @@ cleanup:
     return rc;
 }
 
-int operstatus_transform(ubus_data * u_data, char *interface_name, struct list_head *list) {
+int operstatus_transform(priv_t * p_data, char *interface_name, struct list_head *list) {
     int rc = SR_ERR_OK;
 
-    rc = network_operational_operstatus(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    //TODO some error's are critical
+    rc = network_operational_operstatus(p_data, interface_name, list);
+    INF("network_operational_operstatus: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_mac(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_mac(p_data, interface_name, list);
+    INF("network_operational_mac: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_rx(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_rx(p_data, interface_name, list);
+    INF("network_operational_rx: %s %S", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_tx(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_tx(p_data, interface_name, list);
+    INF("network_operational_tx: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_mtu(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_mtu(p_data, interface_name, list);
+    INF("network_operational_mtu: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_ip(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_ip(p_data, interface_name, list);
+    INF("network_operational_ip: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_neigh(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_neigh(p_data, interface_name, list);
+    INF("network_operational_neigh: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-    rc = network_operational_neigh6(u_data, interface_name, list);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
+    rc = network_operational_neigh6(p_data, interface_name, list);
+    INF("network_operational_neigh6: %s %s", interface_name, sr_strerror(rc));
+    //CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
 
-cleanup:
-    return rc;
+//cleanup:
+    return SR_ERR_OK;
 }
 
 static void sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
@@ -798,7 +807,7 @@ cleanup:
     return rc;
 }
 
-int phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, struct list_head *list)
+int phy_interfaces_state_cb(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *i;
@@ -809,7 +818,7 @@ int phy_interfaces_state_cb(ubus_data * u_data, char *interface_name, struct lis
 
     snprintf(base, MAX_XPATH, fmt, interface_name);
 
-    json_object_object_foreach(u_data->d, key, val)
+    json_object_object_foreach(p_data->d, key, val)
     {
         if (0 == strcmp(key, interface_name) && strlen(key) == strlen(interface_name)) {
             i = val;

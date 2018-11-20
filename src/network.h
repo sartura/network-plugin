@@ -39,16 +39,16 @@ struct value_node {
     sr_val_t *value;
 };
 
-typedef void (*ubus_val_to_sr_val)(ubus_data *, char *, struct list_head *list);
+typedef void (*ubus_val_to_sr_val)(priv_t *, char *, struct list_head *list);
 typedef void (*sfp_ubus_val_to_sr_val)(struct json_object *, struct list_head *list);
 
 int network_operational_start();
 void network_operational_stop();
 
-int operstatus_transform(ubus_data *, char *, struct list_head *);
+int operstatus_transform(priv_t *, char *, struct list_head *);
 
 int sfp_state_data(struct list_head *);
 
-int phy_interfaces_state_cb(ubus_data *, char *, struct list_head *);
+int phy_interfaces_state_cb(priv_t *, char *, struct list_head *);
 
 #endif /* NETWORK_H */

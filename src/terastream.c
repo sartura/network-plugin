@@ -143,8 +143,8 @@ void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
     } else {
         goto cleanup;
     }
-    ubus_data *u_data = (ubus_data *) ctx->data;
-    u_data->tmp = r;
+    priv_t *p_data = (priv_t *) ctx->data;
+    p_data->tmp = r;
 
 cleanup:
     if (NULL != json_result) {
@@ -155,23 +155,23 @@ cleanup:
 
 static void clear_ubus_data(sr_ctx_t *ctx)
 {
-    ubus_data *u_data = (ubus_data *) ctx->data;
+    priv_t *p_data = (priv_t *) ctx->data;
     /* clear data out if it exists */
-    if (u_data->i) {
-        json_object_put(u_data->i);
-        u_data->i = NULL;
+    if (p_data->i) {
+        json_object_put(p_data->i);
+        p_data->i = NULL;
     }
-    if (u_data->d) {
-        json_object_put(u_data->d);
-        u_data->d = NULL;
+    if (p_data->d) {
+        json_object_put(p_data->d);
+        p_data->d = NULL;
     }
-    if (u_data->a) {
-        json_object_put(u_data->a);
-        u_data->a = NULL;
+    if (p_data->a) {
+        json_object_put(p_data->a);
+        p_data->a = NULL;
     }
-    if (u_data->n) {
-        json_object_put(u_data->n);
-        u_data->n = NULL;
+    if (p_data->n) {
+        json_object_put(p_data->n);
+        p_data->n = NULL;
     }
 }
 
@@ -181,7 +181,7 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
     uint32_t id = 0;
     struct blob_buf buf = {0};
     int u_rc = UBUS_STATUS_OK;
-    ubus_data *u_data = (ubus_data *) ctx->data;
+    priv_t *p_data = (priv_t *) ctx->data;
 
     clear_ubus_data(ctx);
 
@@ -197,7 +197,7 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
     UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "network.device");
     u_rc = ubus_invoke(u_ctx, id, "status", buf.head, ubus_cb, ctx, 0);
     UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "status");
-    u_data->d = u_data->tmp;
+    p_data->d = p_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
@@ -205,20 +205,20 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
     UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "network.interface");
     u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, ctx, 0);
     UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "dump");
-    u_data->i = u_data->tmp;
+    p_data->i = p_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
     if (UBUS_STATUS_NOT_FOUND == u_rc) {
         INF_MSG("using generic functions");
-        rc = openwrt_rap(u_data->a);
+        rc = openwrt_rap(p_data->a);
         CHECK_RET_MSG(rc, cleanup, "failed openwrt_arp()");
     } else {
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
         u_rc = ubus_invoke(u_ctx, id, "arp", buf.head, ubus_cb, ctx, 0);
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "arp");
-        u_data->a = u_data->tmp;
+        p_data->a = p_data->tmp;
         blob_buf_free(&buf);
     }
 
@@ -226,13 +226,13 @@ static int get_oper_interfaces(sr_ctx_t *ctx)
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
     if (UBUS_STATUS_NOT_FOUND == u_rc) {
         INF_MSG("using generic functions");
-        rc = openwrt_ipv6_neigh(u_data->n);
+        rc = openwrt_ipv6_neigh(p_data->n);
         CHECK_RET_MSG(rc, cleanup, "failed openwrt_ipv6_neigh()");
     } else {
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
         u_rc = ubus_invoke(u_ctx, id, "ipv6_neigh", buf.head, ubus_cb, ctx, 0);
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "ipv6_neigh");
-        u_data->n = u_data->tmp;
+        p_data->n = p_data->tmp;
         blob_buf_free(&buf);
     }
 
@@ -535,8 +535,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
     (void) ctx;
     int rc = SR_ERR_OK;
-    bool has_wan = false;
-    ubus_data *u_data = (ubus_data *) ctx->data;
+    priv_t *p_data = (priv_t *) ctx->data;
 
     if (strlen(cb_xpath) > strlen("/ietf-interfaces:interfaces-state")) {
         return SR_ERR_OK;
@@ -550,7 +549,7 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 
     /* get interface list */
     struct json_object *r = NULL;
-    json_object_object_get_ex(u_data->i, "interface", &r);
+    json_object_object_get_ex(p_data->i, "interface", &r);
     if (NULL != r) {
         int j;
         const int N = json_object_array_length(r);
@@ -561,14 +560,12 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
             if (NULL == n)
                 continue;
             char *interface = (char *) json_object_get_string(n);
-            if (0 == strncmp(interface, "wan", strlen(interface)))
-                has_wan = true;
-            rc = operstatus_transform(u_data, interface, &list);
+            rc = operstatus_transform(p_data, interface, &list);
             INF("operstatus_transform %s", sr_strerror(rc));
         }
     }
     // get list of bridge members and call phy_interfaces_state_cb
-    json_object_object_foreach(u_data->d, key, val)
+    json_object_object_foreach(p_data->d, key, val)
     {
         // suppress unused warning
         (void) (key);
@@ -579,14 +576,14 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
             for (j = 0; j < N; j++) {
                 json_object *item;
                 item = json_object_array_get_idx(r, j);
-                rc = phy_interfaces_state_cb(u_data, (char *) json_object_get_string(item), &list);
+                rc = phy_interfaces_state_cb(p_data, (char *) json_object_get_string(item), &list);
                 INF("phy_interfaces_state_cb %s", sr_strerror(rc));
             }
         }
     }
 
     // get sfp state date
-    if (has_wan) {
+    if (((priv_t *) ctx->data)->terastream) {
         rc = sfp_state_data(&list);
     }
 
@@ -655,6 +652,29 @@ error:
     return rc;
 }
 
+int is_yang_model_installed(sr_session_ctx_t *session, char *name, bool *exists) {
+    int rc = SR_ERR_OK;
+    size_t schema_cnt = 0, i = 0;
+    sr_schema_t *schema = NULL;
+    *exists = false;
+
+    rc = sr_list_schemas(session, &schema, &schema_cnt);
+    CHECK_RET(rc, cleanup, "error sr_list_schemas: %s", sr_strerror(rc));
+
+    for(i = 0; i < schema_cnt; ++i) {
+        if (0 == strncmp(schema[i].module_name, name, strlen(name))) {
+            *exists = true;
+            break;
+        }
+    }
+
+cleanup:
+    if (schema) {
+        sr_free_schemas(schema, schema_cnt);
+    }
+    return rc;
+}
+
 int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     int rc = SR_ERR_OK;
@@ -669,8 +689,8 @@ int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     ctx->uctx = uci_alloc_context();
     CHECK_NULL_MSG(ctx->uctx, &rc, error, "failed to uci_alloc_context()");
 
-    ctx->data = calloc(1, sizeof(ubus_data));
-    CHECK_NULL_MSG(ctx->data, &rc, error, "failed to calloc ubus_data");
+    ctx->data = calloc(1, sizeof(priv_t));
+    CHECK_NULL_MSG(ctx->data, &rc, error, "failed to calloc priv_t");
 
     INF_MSG("Connecting to sysrepo ...");
     rc = sr_connect(YANG_MODEL, SR_CONN_DEFAULT, &ctx->startup_conn);
@@ -696,6 +716,10 @@ int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     rc = sr_dp_get_items_subscribe(
         session, "/ietf-interfaces:interfaces-state", data_provider_interface_cb, *private_ctx, SR_SUBSCR_CTX_REUSE, &ctx->sub);
     CHECK_RET(rc, error, "Error by sr_dp_get_items_subscribe: %s", sr_strerror(rc));
+
+    /* check if terastream-interfaces-opto is installed */
+    rc = is_yang_model_installed(session, "terastream-interfaces-opto", &(((priv_t *) ctx->data)->terastream));
+    CHECK_RET(rc, error, "error is_yang_model_installed(): %s", sr_strerror(rc));
 
     rc = network_operational_start();
     CHECK_RET(rc, error, "Could not init ubus: %s", sr_strerror(rc));

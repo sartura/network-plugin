@@ -36,12 +36,13 @@
 
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
 
-typedef struct stored_ubus_data {
+typedef struct priv_s {
     json_object *i; // ubus call network.interface dump
     json_object *d; // ubus call network.device status
     json_object *a; // ubus call router.net arp
     json_object *n; // ubus call router.net ipv6_neigh
     json_object *tmp;
-} ubus_data;
+    bool terastream; // is the terastream YANG model installed
+} priv_t;
 
 #endif /* TERASTREAM_H */
