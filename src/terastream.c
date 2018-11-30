@@ -58,9 +58,6 @@ static sr_uci_link table_sr_uci[] = {
     {"", "network.%s.netmask", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask"},
 };
 
-static const char *xpath_network_type_format = "/ietf-interfaces:interfaces/interface[name='%s']/type";
-static const char *default_interface_type = "iana-if-type:ethernetCsmacd";
-
 /* Update UCI configuration from Sysrepo datastore. */
 static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value);
 
@@ -86,44 +83,29 @@ static bool parse_uci_bool(char *value)
 static bool val_has_data(sr_type_t type)
 {
     /* types containing some data */
-    if (type == SR_BINARY_T)
+    switch (type) {
+    case SR_BINARY_T:
+    case SR_BITS_T:
+    case SR_BOOL_T:
+    case SR_DECIMAL64_T:
+    case SR_ENUM_T:
+    case SR_IDENTITYREF_T:
+    case SR_INSTANCEID_T:
+    case SR_INT8_T:
+    case SR_INT16_T:
+    case SR_INT32_T:
+    case SR_INT64_T:
+    case SR_STRING_T:
+    case SR_UINT8_T:
+    case SR_UINT16_T:
+    case SR_UINT32_T:
+    case SR_UINT64_T:
+    case SR_ANYXML_T:
+    case SR_ANYDATA_T:
         return true;
-    else if (type == SR_BITS_T)
-        return true;
-    else if (type == SR_BOOL_T)
-        return true;
-    else if (type == SR_DECIMAL64_T)
-        return true;
-    else if (type == SR_ENUM_T)
-        return true;
-    else if (type == SR_IDENTITYREF_T)
-        return true;
-    else if (type == SR_INSTANCEID_T)
-        return true;
-    else if (type == SR_INT8_T)
-        return true;
-    else if (type == SR_INT16_T)
-        return true;
-    else if (type == SR_INT32_T)
-        return true;
-    else if (type == SR_INT64_T)
-        return true;
-    else if (type == SR_STRING_T)
-        return true;
-    else if (type == SR_UINT8_T)
-        return true;
-    else if (type == SR_UINT16_T)
-        return true;
-    else if (type == SR_UINT32_T)
-        return true;
-    else if (type == SR_UINT64_T)
-        return true;
-    else if (type == SR_ANYXML_T)
-        return true;
-    else if (type == SR_ANYDATA_T)
-        return true;
-    else
+    default:
         return false;
+    }
 }
 
 static void restart_network_over_ubus(int wait_time)
@@ -305,16 +287,42 @@ error:
     return rc;
 }
 
+char *new_path_keys(char *path, char *key1, char *key2, char *key3, char *key4) {
+    int rc = SR_ERR_OK;
+    char *value = NULL;
+    int len = 0;
+
+    CHECK_NULL_MSG(path, &rc, cleanup, "missing parameter path");
+    CHECK_NULL_MSG(key1, &rc, cleanup, "missing parameter key1");
+    CHECK_NULL_MSG(key2, &rc, cleanup, "missing parameter key2");
+    CHECK_NULL_MSG(key3, &rc, cleanup, "missing parameter key3");
+
+    len = strlen(path) + strlen(key1) + strlen(key2) + strlen(key3);
+    if (key4) len += strlen(key4);
+
+    value = malloc(sizeof(char) * len);
+    CHECK_NULL_MSG(value, &rc, cleanup, "failed malloc");
+
+    if (key4) {
+        snprintf(value, len, path, key1, key2, key3, key4);
+    } else {
+        snprintf(value, len, path, key1, key2, key3);
+    }
+
+    return value;
+cleanup:
+    return strdup("");
+}
+
 static int parse_network_config(sr_ctx_t *ctx)
 {
-    struct uci_element *e;
-    struct uci_section *s;
     struct uci_package *package = NULL;
     char ucipath[MAX_UCI_PATH] = {0};
-    char xpath[MAX_XPATH] = {
-        0,
-    };
-    char *value = calloc(1, MAX_UCI_PATH);
+    struct uci_element *e;
+    struct uci_section *s;
+    char *xpath = NULL;
+    char *ipaddr = NULL;
+    char *value = NULL;
     int rc, uci_rc;
 
     uci_rc = uci_load(ctx->uctx, "network", &package);
@@ -325,72 +333,84 @@ static int parse_network_config(sr_ctx_t *ctx)
         s = uci_to_section(e);
         char *type = s->type;
         char *name = s->e.name;
+        char *fmt = "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/%s";
+        char *fmt_ip = "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/%s";
 
-        if (strcmp("interface", type) == 0) {
-            bool ipv6 = false;
-            bool dhcp = false;
-            /* parse the interface, check IP type
-             * IPv4 -> static, dhcp; IPv6 -> dhcpv6 */
-
-            INF("processing interface %s", name);
-            snprintf(ucipath, MAX_UCI_PATH, "network.%s.proto", name);
-            uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
-            UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
-            if (0 == strncmp("dhcpv6", value, strlen(value)))
-                ipv6 = true;
-            if (0 == strncmp("dhcp", value, strlen("dhcp")))
-                dhcp = true;
-            char *interface = ipv6 ? "6" : "4";
-
-            snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
-            rc = get_uci_item(ctx->uctx, ucipath, &value);
-            if (rc != UCI_OK)
-                strcpy(value, "1500");
-            snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/mtu", name, interface);
-            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
-
-            snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
-            rc = get_uci_item(ctx->uctx, ucipath, &value);
-            if (rc != UCI_OK)
-                parse_uci_bool(value) ? strcpy(value, "true") : strcpy(value, "false");
-            snprintf(xpath, MAX_XPATH, "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/enabled", name, interface);
-            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
-
-            if (!dhcp) {
-                snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
-                uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
-                UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
-
-                /* check if netmask exists, if not use prefix-length */
-                snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
-                rc = get_uci_item(ctx->uctx, ucipath, &value);
-                if (rc == UCI_OK) {
-                    snprintf(xpath,
-                             MAX_XPATH,
-                             "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/netmask",
-                             name,
-                             interface,
-                             value);
-                    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
-                } else {
-                    snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
-                    rc = get_uci_item(ctx->uctx, ucipath, &value);
-                    if (rc != UCI_OK)
-                        ipv6 ? strcpy(value, "64") : strcpy(value, "24");
-                    snprintf(xpath,
-                             MAX_XPATH,
-                             "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv%s/address[ip='%s']/prefix-length",
-                             name,
-                             interface,
-                             value);
-                    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
-                }
-            }
-
-            sprintf(xpath, xpath_network_type_format, name);
-            rc = sr_set_item_str(ctx->startup_sess, xpath, default_interface_type, SR_EDIT_DEFAULT);
-            CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
+        if (0 != strcmp("interface", type)) {
+            continue;
         }
+
+        /* parse the interface, check IP type
+         * IPv4 -> static, dhcp; IPv6 -> dhcpv6 */
+        bool dhcpv6 = false;
+        bool dhcp = false;
+
+        INF("processing interface %s", name);
+        snprintf(ucipath, MAX_UCI_PATH, "network.%s.proto", name);
+        uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
+        UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
+        if (0 == strncmp("dhcpv6", value, strlen(value))) {
+            dhcpv6 = true;
+        }
+        if (0 == strncmp("dhcp", value, strlen("dhcp"))) {
+            dhcp = true;
+        }
+        char *interface = dhcpv6 ? "6" : "4";
+        free(value);
+
+        snprintf(ucipath, MAX_UCI_PATH, "network.%s.mtu", name);
+        uci_rc = get_uci_item(ctx->uctx, ucipath, &value);
+        if (uci_rc != UCI_OK) {
+            value = strdup("1500");
+        }
+        xpath = new_path_keys(fmt, name, interface, "mtu", NULL);
+        rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+        del_path_key(&xpath);
+        free(value);
+
+        snprintf(ucipath, MAX_UCI_PATH, "network.%s.enabled", name);
+        rc = get_uci_item(ctx->uctx, ucipath, &value);
+        if (rc != UCI_OK)
+            value = strdup("true");
+        parse_uci_bool(value) ? strcpy(value, "true") : strcpy(value, "false");
+        xpath = new_path_keys(fmt, name, interface, "enabled", NULL);
+        rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+        del_path_key(&xpath);
+        free(value);
+
+        xpath = new_path_key("/ietf-interfaces:interfaces/interface[name='%s']/type", name);
+        rc = sr_set_item_str(ctx->startup_sess, xpath, "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
+        CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath, sr_strerror(rc));
+        del_path_key(&xpath);
+
+        if (dhcp) {
+            continue;
+        }
+        snprintf(ucipath, MAX_UCI_PATH, "network.%s.ipaddr", name);
+        uci_rc = get_uci_item(ctx->uctx, ucipath, &ipaddr);
+        UCI_CHECK_RET(uci_rc, &rc, error, "get_uci_item %d %s", uci_rc, ucipath);
+
+        /* check if netmask exists, if not use prefix-length */
+        snprintf(ucipath, MAX_UCI_PATH, "network.%s.netmask", name);
+        rc = get_uci_item(ctx->uctx, ucipath, &value);
+        if (rc == UCI_OK) {
+            xpath = new_path_keys(fmt_ip, name, interface, value, "netmask");
+            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+            del_path_key(&xpath);
+            free(value);
+        } else {
+            snprintf(ucipath, MAX_UCI_PATH, "network.%s.ip%sprefixlen", interface, name);
+            rc = get_uci_item(ctx->uctx, ucipath, &value);
+            //UCI default values for ip4prefixlen and ip6prefixlen
+            if (rc != UCI_OK)
+                value = dhcpv6 ? strdup("64") : strdup("24");
+
+            xpath = new_path_keys(fmt_ip, name, interface, value, "prefix-length");
+            rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+            del_path_key(&xpath);
+            free(value);
+        }
+        free(ipaddr);
     }
 
     INF_MSG("commit the sysrepo changes");
@@ -400,7 +420,6 @@ static int parse_network_config(sr_ctx_t *ctx)
 error:
     if (package)
         uci_unload(ctx->uctx, package);
-    free(value);
     return rc;
 }
 
@@ -622,7 +641,7 @@ exit:
     return rc;
 }
 
-static int sync_datastores2(sr_ctx_t *ctx)
+static int sync_datastore(sr_ctx_t *ctx)
 {
     char startup_file[MAX_XPATH] = {0};
     int rc = SR_ERR_OK;
@@ -702,7 +721,7 @@ int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
     *private_ctx = ctx;
 
     /* Init type for interface... */
-    rc = sync_datastores2(ctx);
+    rc = sync_datastore(ctx);
     CHECK_RET(rc, error, "Couldn't initialize datastores: %s", sr_strerror(rc));
 
     INF_MSG("sr_plugin_init_cb for sysrepo-plugin-dt-network");
