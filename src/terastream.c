@@ -561,7 +561,7 @@ sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
 static int
 #ifdef SYSREPO_LESS_0_7_5
 data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
-#elif SYSREPO_LESS_0_7_7
+#elifdef SYSREPO_LESS_0_7_7
 data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 #else
 data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)
