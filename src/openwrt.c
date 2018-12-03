@@ -28,7 +28,8 @@
 
 static struct blob_buf bb;
 
-void remove_newline(char *buf)
+static void
+remove_newline(char *buf)
 {
     int len;
     len = strlen(buf) - 1;
@@ -37,7 +38,9 @@ void remove_newline(char *buf)
     }
 }
 
-char *single_space(char *str) {
+static char *
+single_space(char *str)
+{
     char *from, *to;
     int space = 0;
     from = to = str;
@@ -56,7 +59,9 @@ char *single_space(char *str) {
 }
 
 
-int openwrt_rap(json_object *ret) {
+int
+openwrt_rap(json_object *ret)
+{
     int rc = SR_ERR_OK;
     FILE *arptable;
     void *t, *a;
@@ -100,7 +105,8 @@ cleanup:
     return rc;
 }
 
-int openwrt_ipv6_neigh(json_object *ret)
+int
+openwrt_ipv6_neigh(json_object *ret)
 {
     int rc = SR_ERR_OK;
     FILE *ipv6nghtable;

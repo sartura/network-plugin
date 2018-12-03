@@ -40,29 +40,29 @@ const char *YANG_MODEL = "ietf-interfaces";
 
 /* Configuration part of the plugin. */
 typedef struct sr_uci_mapping {
-    char *default_value;
     char ucipath[MAX_UCI_PATH];
     char xpath[MAX_XPATH];
 } sr_uci_link;
 
 /* Mappings of uci options to Sysrepo xpaths. */
 static sr_uci_link table_sr_uci[] = {
-    {"", "network.%s.ipaddr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/ip"},
-    {"", "network.%s.ip6addr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/ip"},
-    {"1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu"},
-    {"1500", "network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu"},
-    {"true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled"},
-    {"true", "network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled"},
-    {"24", "network.%s.ip4prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length"},
-    {"64", "network.%s.ip6prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length"},
-    {"", "network.%s.netmask", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask"},
+    {"network.%s.ipaddr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/ip"},
+    {"network.%s.ip6addr", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/ip"},
+    {"network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/mtu"},
+    {"network.%s.mtu", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/mtu"},
+    {"network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/enabled"},
+    {"network.%s.enabled", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/enabled"},
+    {"network.%s.ip4prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/prefix-length"},
+    {"network.%s.ip6prefixlen", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv6/address[ip='%s']/prefix-length"},
+    {"network.%s.netmask", "/ietf-interfaces:interfaces/interface[name='%s']/ietf-ip:ipv4/address[ip='%s']/netmask"},
 };
 
 /* Update UCI configuration from Sysrepo datastore. */
 static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value);
 
 /* get UCI boolean value */
-static bool parse_uci_bool(char *value)
+static bool
+parse_uci_bool(char *value)
 {
 
     if (0 == strncmp("1", value, strlen(value))) {
@@ -80,7 +80,8 @@ static bool parse_uci_bool(char *value)
     }
 };
 
-static bool val_has_data(sr_type_t type)
+static bool
+val_has_data(sr_type_t type)
 {
     /* types containing some data */
     switch (type) {
@@ -108,12 +109,14 @@ static bool val_has_data(sr_type_t type)
     }
 }
 
-static void restart_network_over_ubus(int wait_time)
+static void
+restart_network_over_ubus(int wait_time)
 {
     system("/etc/init.d/network reload > /dev/null");
 }
 
-void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+static void
+ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
     sr_ctx_t *ctx = req->priv;
     struct json_object *r = NULL;
@@ -135,7 +138,8 @@ cleanup:
     return;
 }
 
-static void clear_ubus_data(sr_ctx_t *ctx)
+static void
+clear_ubus_data(sr_ctx_t *ctx)
 {
     priv_t *p_data = (priv_t *) ctx->data;
     /* clear data out if it exists */
@@ -157,7 +161,8 @@ static void clear_ubus_data(sr_ctx_t *ctx)
     }
 }
 
-static int get_oper_interfaces(sr_ctx_t *ctx)
+static int
+get_oper_interfaces(sr_ctx_t *ctx)
 {
     int rc = SR_ERR_OK;
     uint32_t id = 0;
@@ -226,7 +231,8 @@ cleanup:
     return rc;
 }
 
-static int config_xpath_to_ucipath(sr_ctx_t *ctx, sr_uci_link *mapping, sr_val_t *value)
+static int
+config_xpath_to_ucipath(sr_ctx_t *ctx, sr_uci_link *mapping, sr_val_t *value)
 {
     char *val_str = NULL;
     char ucipath[MAX_UCI_PATH];
@@ -267,7 +273,8 @@ exit:
     return rc;
 }
 
-static int config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value)
+static int
+config_store_to_uci(sr_ctx_t *ctx, sr_val_t *value)
 {
     const int n_mappings = ARR_SIZE(table_sr_uci);
     int rc = SR_ERR_OK;
@@ -287,7 +294,9 @@ error:
     return rc;
 }
 
-char *new_path_keys(char *path, char *key1, char *key2, char *key3, char *key4) {
+static char *
+new_path_keys(char *path, char *key1, char *key2, char *key3, char *key4)
+{
     int rc = SR_ERR_OK;
     char *value = NULL;
     int len = 0;
@@ -314,7 +323,8 @@ cleanup:
     return strdup("");
 }
 
-static int parse_network_config(sr_ctx_t *ctx)
+static int
+parse_network_config(sr_ctx_t *ctx)
 {
     struct uci_package *package = NULL;
     char ucipath[MAX_UCI_PATH] = {0};
@@ -423,7 +433,8 @@ error:
     return rc;
 }
 
-static int parse_change(sr_session_ctx_t *session, sr_ctx_t *ctx, const char *module_name, sr_notif_event_t event)
+static int
+parse_change(sr_session_ctx_t *session, sr_ctx_t *ctx, const char *module_name, sr_notif_event_t event)
 {
     int rc = SR_ERR_OK;
     sr_change_oper_t oper;
@@ -458,7 +469,8 @@ error:
     return rc;
 }
 
-static int module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
+static int
+module_change_cb(sr_session_ctx_t *session, const char *module_name, sr_notif_event_t event, void *private_ctx)
 {
     int rc = SR_ERR_OK;
     sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
@@ -485,7 +497,8 @@ error:
     return rc;
 }
 
-static size_t list_size(struct list_head *list)
+static size_t
+list_size(struct list_head *list)
 {
     size_t current_size = 0;
     struct value_node *vn;
@@ -498,7 +511,8 @@ static size_t list_size(struct list_head *list)
     return current_size;
 }
 
-int sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
+static int
+sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
 {
     int rc = SR_ERR_OK;
 
@@ -554,7 +568,6 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 #endif
 {
     sr_ctx_t *ctx = (sr_ctx_t *) private_ctx;
-    (void) ctx;
     int rc = SR_ERR_OK;
     priv_t *p_data = (priv_t *) ctx->data;
 
@@ -610,7 +623,6 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 
     size_t cnt = 0;
     cnt = list_size(&list);
-    INF("Allocating %zu values.", cnt);
 
     struct value_node *vn, *q;
     size_t j = 0;
@@ -631,19 +643,13 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
 
     list_del(&list);
 
-    //if (*values_cnt > 0) {
-    //    INF("Debug sysrepo values printout: %zu", *values_cnt);
-    //    for (size_t i = 0; i < *values_cnt; i++) {
-    //        sr_print_val(&(*values)[i]);
-    //    }
-    //}
-
 exit:
     clear_ubus_data(ctx);
     return rc;
 }
 
-static int sync_datastore(sr_ctx_t *ctx)
+static int
+sync_datastore(sr_ctx_t *ctx)
 {
     char startup_file[MAX_XPATH] = {0};
     int rc = SR_ERR_OK;
@@ -673,7 +679,9 @@ error:
     return rc;
 }
 
-int is_yang_model_installed(sr_session_ctx_t *session, char *name, bool *exists) {
+static int
+is_yang_model_installed(sr_session_ctx_t *session, char *name, bool *exists)
+{
     int rc = SR_ERR_OK;
     size_t schema_cnt = 0, i = 0;
     sr_schema_t *schema = NULL;
@@ -696,7 +704,8 @@ cleanup:
     return rc;
 }
 
-int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
+int
+sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     int rc = SR_ERR_OK;
     sr_ctx_t *ctx = calloc(1, sizeof(*ctx));
@@ -753,7 +762,8 @@ error:
     return rc;
 }
 
-void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
+void
+sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
     INF("Plugin cleanup called, private_ctx is %s available.", private_ctx ? "" : "not");
     if (!private_ctx)
@@ -787,7 +797,8 @@ void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 
 volatile int exit_application = 0;
 
-static void sigint_handler(__attribute__((unused)) int signum)
+static void
+sigint_handler(__attribute__((unused)) int signum)
 {
     INF_MSG("Sigint called, exiting...");
     exit_application = 1;

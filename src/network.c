@@ -36,7 +36,9 @@ struct status_container {
 struct ubus_context *ctx;
 struct status_container *container_msg;
 
-static char *remove_unit(const char *str)
+// remove mW, mV and A units from ubus result
+static char *
+remove_unit(const char *str)
 {
     char *number = (char *) str;
     int i;
@@ -51,7 +53,9 @@ static char *remove_unit(const char *str)
     return number;
 }
 
-struct value_node *insert_node(struct list_head *list, char *xpath) {
+static struct value_node *
+insert_node(struct list_head *list, char *xpath)
+{
     int rc = SR_ERR_OK;
     struct value_node *list_value = NULL;
 
@@ -66,7 +70,9 @@ cleanup:
     return list_value;
 }
 
-int insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_name, sr_type_t sr_type, char *xpath) {
+static int
+insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_name, sr_type_t sr_type, char *xpath)
+{
     int rc = SR_ERR_OK;
     double res = 0;
     char *end = NULL;
@@ -95,6 +101,7 @@ int insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_nam
             break;
         case SR_BOOL_T:
         case SR_DECIMAL64_T:
+            INF("ubus_result |%s|\n\n", ubus_result);
             strtod(remove_unit(ubus_result), &end);
             list_value->value->data.decimal64_val = res;
             break;
@@ -132,7 +139,8 @@ cleanup:
     return rc;
 }
 
-static char *transform_state(const char *name)
+static char *
+transform_state(const char *name)
 {
     if (0 == strcmp(name, "INCOMPLETE")) {
         return "incomplete";
@@ -149,7 +157,8 @@ static char *transform_state(const char *name)
     }
 }
 
-bool is_l3_member(json_object *i, json_object *d, char *interface, char *device)
+static bool
+is_l3_member(json_object *i, json_object *d, char *interface, char *device)
 {
     struct json_object *res = NULL, *r;
     const char *l3_device = NULL;
@@ -181,7 +190,8 @@ bool is_l3_member(json_object *i, json_object *d, char *interface, char *device)
     return false;
 }
 
-struct json_object *get_device_interface(json_object *i, json_object *d, char *name)
+static struct json_object *
+get_device_interface(json_object *i, json_object *d, char *name)
 {
     struct json_object *res = NULL, *r;
     const char *l3_device = NULL;
@@ -221,7 +231,8 @@ struct json_object *get_device_interface(json_object *i, json_object *d, char *n
     return res;
 }
 
-struct json_object *get_json_interface(json_object *obj, char *name)
+static struct json_object *
+get_json_interface(json_object *obj, char *name)
 {
     struct json_object *res = NULL, *r;
 
@@ -247,7 +258,8 @@ struct json_object *get_json_interface(json_object *obj, char *name)
     return res;
 }
 
-int network_operational_start()
+int
+network_operational_start()
 {
     if (ctx)
         return SR_ERR_OK;
@@ -263,7 +275,8 @@ int network_operational_start()
     return SR_ERR_OK;
 }
 
-void network_operational_stop()
+void
+network_operational_stop()
 {
     INF_MSG("Free ubus context.");
     INF("%lu %lu", (long unsigned) ctx, (long unsigned) container_msg);
@@ -273,7 +286,8 @@ void network_operational_stop()
         free(container_msg);
 }
 
-static void make_status_container(struct status_container **context,
+static void
+make_status_container(struct status_container **context,
                                   const char *ubus_method_to_call,
                                   sfp_ubus_val_to_sr_val result_function,
                                   struct list_head *list)
@@ -284,7 +298,8 @@ static void make_status_container(struct status_container **context,
     (*context)->list = list;
 }
 
-static void ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
+static void
+ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
 {
     char *json_string;
     struct json_object *base_object;
@@ -306,7 +321,8 @@ static void ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *m
     free(json_string);
 }
 
-static int ubus_base(const char *ubus_lookup_path, struct status_container *msg, struct blob_buf *blob)
+static int
+ubus_base(const char *ubus_lookup_path, struct status_container *msg, struct blob_buf *blob)
 {
     /* INF("list null %d", msg->list==NULL); */
     uint32_t id = 0;
@@ -325,7 +341,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_operstatus(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_operstatus(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *obj;
@@ -351,7 +368,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_mac(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_mac(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
@@ -369,7 +387,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_rx(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_rx(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
@@ -404,7 +423,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_tx(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_tx(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *i;
@@ -435,7 +455,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_mtu(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_mtu(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *i;
@@ -485,7 +506,8 @@ static int network_operational_mtu(priv_t * p_data, char *interface_name, struct
     return rc;
 }
 
-static int network_operational_ip(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_ip(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *ip;
@@ -567,7 +589,8 @@ static int network_operational_ip(priv_t * p_data, char *interface_name, struct 
     return rc;
 }
 
-static int network_operational_neigh6(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_neigh6(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *table, *iter_object;
@@ -636,7 +659,8 @@ cleanup:
     return rc;
 }
 
-static int network_operational_neigh(priv_t * p_data, char *interface_name, struct list_head *list)
+static int
+network_operational_neigh(priv_t *p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *table, *iter_object;
@@ -690,7 +714,9 @@ cleanup:
     return rc;
 }
 
-int operstatus_transform(priv_t * p_data, char *interface_name, struct list_head *list) {
+int
+operstatus_transform(priv_t *p_data, char *interface_name, struct list_head *list)
+{
     int rc = SR_ERR_OK;
 
     //TODO some error's are critical
@@ -730,7 +756,8 @@ int operstatus_transform(priv_t * p_data, char *interface_name, struct list_head
     return SR_ERR_OK;
 }
 
-static void sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
+static void
+sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:rx-pwr";
@@ -742,7 +769,8 @@ cleanup:
     return;
 }
 
-static void sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
+static void
+sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:tx-pwr";
@@ -754,7 +782,8 @@ cleanup:
     return;
 }
 
-static void sfp_current_cb(struct json_object *obj, struct list_head *list)
+static void
+sfp_current_cb(struct json_object *obj, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:current";
@@ -766,7 +795,8 @@ cleanup:
     return;
 }
 
-static void sfp_voltage_cb(struct json_object *obj, struct list_head *list)
+static void
+sfp_voltage_cb(struct json_object *obj, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:voltage";
@@ -778,7 +808,8 @@ cleanup:
     return;
 }
 
-int sfp_state_data(struct list_head *list)
+int
+sfp_state_data(struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct status_container *msg = NULL;
@@ -807,7 +838,8 @@ cleanup:
     return rc;
 }
 
-int phy_interfaces_state_cb(priv_t * p_data, char *interface_name, struct list_head *list)
+int
+phy_interfaces_state_cb(priv_t * p_data, char *interface_name, struct list_head *list)
 {
     int rc = SR_ERR_OK;
     struct json_object *t, *i;
