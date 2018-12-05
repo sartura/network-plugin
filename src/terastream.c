@@ -203,7 +203,7 @@ get_oper_interfaces(sr_ctx_t *ctx)
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
     if (UBUS_STATUS_NOT_FOUND == u_rc) {
         INF_MSG("using generic functions");
-        rc = openwrt_rap(p_data->a);
+        rc = openwrt_rap(&p_data->a);
         CHECK_RET_MSG(rc, cleanup, "failed openwrt_arp()");
     } else {
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
@@ -217,7 +217,7 @@ get_oper_interfaces(sr_ctx_t *ctx)
     u_rc = ubus_lookup_id(u_ctx, "router.net", &id);
     if (UBUS_STATUS_NOT_FOUND == u_rc) {
         INF_MSG("using generic functions");
-        rc = openwrt_ipv6_neigh(p_data->n);
+        rc = openwrt_ipv6_neigh(&p_data->n);
         CHECK_RET_MSG(rc, cleanup, "failed openwrt_ipv6_neigh()");
     } else {
         UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "router.net");
@@ -226,11 +226,9 @@ get_oper_interfaces(sr_ctx_t *ctx)
         p_data->n = p_data->tmp;
         blob_buf_free(&buf);
     }
-    INF("\n\n%s", json_object_get_string(p_data->n));
 
-    rc = openwrt_ipv6_link_local_address(p_data->ll);
+    rc = openwrt_ipv6_link_local_address(&p_data->ll);
     CHECK_RET_MSG(rc, cleanup, "failed openwrt_ipv6_link_local_address()");
-    INF("\n\n%s", json_object_get_string(p_data->ll));
 
 cleanup:
     if (NULL != u_ctx) {
