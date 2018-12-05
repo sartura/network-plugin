@@ -159,6 +159,10 @@ clear_ubus_data(sr_ctx_t *ctx)
         json_object_put(p_data->n);
         p_data->n = NULL;
     }
+    if (p_data->ll) {
+        json_object_put(p_data->ll);
+        p_data->ll = NULL;
+    }
 }
 
 static int
@@ -222,6 +226,11 @@ get_oper_interfaces(sr_ctx_t *ctx)
         p_data->n = p_data->tmp;
         blob_buf_free(&buf);
     }
+    INF("\n\n%s", json_object_get_string(p_data->n));
+
+    rc = openwrt_ipv6_link_local_address(p_data->ll);
+    CHECK_RET_MSG(rc, cleanup, "failed openwrt_ipv6_link_local_address()");
+    INF("\n\n%s", json_object_get_string(p_data->ll));
 
 cleanup:
     if (NULL != u_ctx) {
