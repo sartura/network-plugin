@@ -539,7 +539,7 @@ network_operational_ip(priv_t *p_data, char *interface_name, struct list_head *l
         ip = json_object_get_string(a);
 
         json_object_object_get_ex(t, "mask", &m);
-        if (!a)
+        if (!m)
             continue;
         prefix_length = (uint8_t) json_object_get_int(m);
 
@@ -571,7 +571,7 @@ network_operational_ip(priv_t *p_data, char *interface_name, struct list_head *l
         ip = json_object_get_string(a);
 
         json_object_object_get_ex(t, "mask", &m);
-        if (!a)
+        if (!m)
             continue;
         prefix_length = (uint8_t) json_object_get_int(m);
 
@@ -622,7 +622,6 @@ network_operational_ip(priv_t *p_data, char *interface_name, struct list_head *l
         list_value->value->data.uint8_val = prefix_length;
         list_add(&list_value->head, list);
     }
-
 
     return rc;
 }
