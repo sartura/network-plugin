@@ -42,6 +42,7 @@ typedef struct priv_s {
     json_object *a; // ubus call router.net arp
     json_object *n; // ubus call router.net ipv6_neigh
     json_object *ll; // get link local IPv6 addresses
+    json_object *sfp; // get sfp state data
     json_object *tmp;
     bool terastream; // is the terastream YANG model installed
 } priv_t;

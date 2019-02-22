@@ -50,5 +50,6 @@ int operstatus_transform(priv_t *, char *, struct list_head *);
 int sfp_state_data(struct list_head *);
 
 int phy_interfaces_state_cb(priv_t *, char *, struct list_head *);
+int sfp_data_cb(struct json_object *, struct list_head *);
 
 #endif /* NETWORK_H */

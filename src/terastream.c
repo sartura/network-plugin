@@ -163,6 +163,10 @@ clear_ubus_data(sr_ctx_t *ctx)
         json_object_put(p_data->ll);
         p_data->ll = NULL;
     }
+    if (p_data->sfp) {
+        json_object_put(p_data->sfp);
+        p_data->sfp = NULL;
+    }
 }
 
 static int
@@ -197,6 +201,14 @@ get_oper_interfaces(sr_ctx_t *ctx)
     u_rc = ubus_invoke(u_ctx, id, "dump", buf.head, ubus_cb, ctx, 0);
     UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "dump");
     p_data->i = p_data->tmp;
+    blob_buf_free(&buf);
+
+    blob_buf_init(&buf, 0);
+    u_rc = ubus_lookup_id(u_ctx, "sfp.ddm", &id);
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, "sfp.ddm");
+    u_rc = ubus_invoke(u_ctx, id, "get-all", buf.head, ubus_cb, ctx, 0);
+    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, "get-all");
+    p_data->sfp = p_data->tmp;
     blob_buf_free(&buf);
 
     blob_buf_init(&buf, 0);
@@ -624,8 +636,9 @@ data_provider_interface_cb(const char *cb_xpath, sr_val_t **values, size_t *valu
     }
 
     // get sfp state date
-    if (((priv_t *) ctx->data)->terastream) {
-        rc = sfp_state_data(&list);
+    if (p_data->sfp) {
+        rc = sfp_data_cb(p_data->sfp, &list);
+        INF("sfp_data_cb %s", sr_strerror(rc));
     }
 
     size_t cnt = 0;

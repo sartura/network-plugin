@@ -27,14 +27,7 @@
 #define MAX_UBUS_PATH 100
 #define UBUS_INVOKE_TIMEOUT 2000
 
-struct status_container {
-    const char *ubus_method;
-    sfp_ubus_val_to_sr_val transform;
-    struct list_head *list;
-};
-
 struct ubus_context *ctx;
-struct status_container *container_msg;
 
 // remove mW, mV and A units from ubus result
 static char *
@@ -81,7 +74,7 @@ insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_name, s
     struct value_node *list_value = NULL;
 
     json_object_object_get_ex(jobj, j_name, &item);
-    CHECK_NULL(jobj, &rc, cleanup, "failed json_object_object_get_ex for %s", j_name);
+    CHECK_NULL(item, &rc, cleanup, "failed json_object_object_get_ex for %s", j_name);
 
     ubus_result = json_object_get_string(item);
     CHECK_NULL_MSG(ubus_result, &rc, cleanup, "failed json_object_get_string");
@@ -101,7 +94,7 @@ insert_sr_node(struct list_head *list, struct json_object *jobj, char *j_name, s
             break;
         case SR_BOOL_T:
         case SR_DECIMAL64_T:
-            strtod(remove_unit(ubus_result), &end);
+            res = strtod(remove_unit(ubus_result), &end);
             list_value->value->data.decimal64_val = res;
             break;
         case SR_INT8_T:
@@ -260,11 +253,10 @@ get_json_interface(json_object *obj, char *name)
 int
 network_operational_start()
 {
-    if (ctx)
+    if (ctx) {
         return SR_ERR_OK;
+    }
     INF("Connect ubus context. %zu", (size_t) ctx);
-    container_msg = calloc(1, sizeof(*container_msg));
-
     ctx = ubus_connect(NULL);
     if (ctx == NULL) {
         INF_MSG("Cant allocate ubus\n");
@@ -278,66 +270,9 @@ void
 network_operational_stop()
 {
     INF_MSG("Free ubus context.");
-    INF("%lu %lu", (long unsigned) ctx, (long unsigned) container_msg);
-    if (ctx)
+    if (ctx) {
         ubus_free(ctx);
-    if (container_msg)
-        free(container_msg);
-}
-
-static void
-make_status_container(struct status_container **context,
-                                  const char *ubus_method_to_call,
-                                  sfp_ubus_val_to_sr_val result_function,
-                                  struct list_head *list)
-{
-    *context = container_msg;
-    (*context)->transform = result_function;
-    (*context)->ubus_method = ubus_method_to_call;
-    (*context)->list = list;
-}
-
-static void
-ubus_base_cb(struct ubus_request *req, int type, struct blob_attr *msg)
-{
-    char *json_string;
-    struct json_object *base_object;
-
-    struct status_container *status_container_msg;
-
-    status_container_msg = (struct status_container *) req->priv;
-
-    if (!msg) {
-        return;
     }
-
-    json_string = blobmsg_format_json(msg, true);
-    base_object = json_tokener_parse(json_string);
-
-    status_container_msg->transform(base_object, status_container_msg->list);
-
-    json_object_put(base_object);
-    free(json_string);
-}
-
-static int
-ubus_base(const char *ubus_lookup_path, struct status_container *msg, struct blob_buf *blob)
-{
-    /* INF("list null %d", msg->list==NULL); */
-    uint32_t id = 0;
-    int u_rc = UBUS_STATUS_OK;
-    int rc = SR_ERR_OK;
-
-    u_rc = ubus_lookup_id(ctx, ubus_lookup_path, &id);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object %s", u_rc, ubus_lookup_path);
-
-    u_rc = ubus_invoke(ctx, id, msg->ubus_method, blob->head, ubus_base_cb, (void *) msg, UBUS_INVOKE_TIMEOUT);
-    UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no method %s", u_rc, msg->ubus_method);
-
-cleanup:
-    blob_buf_free(blob);
-
-    return rc;
 }
 
 static int
@@ -793,88 +728,6 @@ operstatus_transform(priv_t *p_data, char *interface_name, struct list_head *lis
     return SR_ERR_OK;
 }
 
-static void
-sfp_rx_pwr_cb(struct json_object *obj, struct list_head *list)
-{
-    int rc = SR_ERR_OK;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:rx-pwr";
-
-    rc = insert_sr_node(list, obj, "rx-pwr", SR_DECIMAL64_T, (char *) fmt);
-    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
-
-cleanup:
-    return;
-}
-
-static void
-sfp_tx_pwr_cb(struct json_object *obj, struct list_head *list)
-{
-    int rc = SR_ERR_OK;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:tx-pwr";
-
-    rc = insert_sr_node(list, obj, "tx-pwr", SR_DECIMAL64_T, (char *) fmt);
-    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
-
-cleanup:
-    return;
-}
-
-static void
-sfp_current_cb(struct json_object *obj, struct list_head *list)
-{
-    int rc = SR_ERR_OK;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:current";
-
-    rc = insert_sr_node(list, obj, "current", SR_DECIMAL64_T, (char *) fmt);
-    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
-
-cleanup:
-    return;
-}
-
-static void
-sfp_voltage_cb(struct json_object *obj, struct list_head *list)
-{
-    int rc = SR_ERR_OK;
-    const char *fmt = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:voltage";
-
-    rc = insert_sr_node(list, obj, "voltage", SR_DECIMAL64_T, (char *) fmt);
-    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
-
-cleanup:
-    return;
-}
-
-int
-sfp_state_data(struct list_head *list)
-{
-    int rc = SR_ERR_OK;
-    struct status_container *msg = NULL;
-    struct blob_buf buf = {0};
-
-    make_status_container(&msg, "get-rx-pwr", sfp_rx_pwr_cb, list);
-    rc = ubus_base("sfp.ddm", msg, &buf);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
-
-    blob_buf_init(&buf, 0);
-    make_status_container(&msg, "get-tx-pwr", sfp_tx_pwr_cb, list);
-    rc = ubus_base("sfp.ddm", msg, &buf);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
-
-    blob_buf_init(&buf, 0);
-    make_status_container(&msg, "get-current", sfp_current_cb, list);
-    rc = ubus_base("sfp.ddm", msg, &buf);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
-
-    blob_buf_init(&buf, 0);
-    make_status_container(&msg, "get-voltage", sfp_voltage_cb, list);
-    rc = ubus_base("sfp.ddm", msg, &buf);
-    CHECK_RET(rc, cleanup, "Failed to get ubus state data: %s", sr_strerror(rc));
-
-cleanup:
-    return rc;
-}
-
 int
 phy_interfaces_state_cb(priv_t * p_data, char *interface_name, struct list_head *list)
 {
@@ -945,6 +798,34 @@ phy_interfaces_state_cb(priv_t * p_data, char *interface_name, struct list_head 
 
     snprintf(xpath, MAX_XPATH, "%s%s", base, "statistics/in-errors");
     rc = insert_sr_node(list, i, "tx_errors", SR_UINT32_T, xpath);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
+
+cleanup:
+    return rc;
+}
+
+int
+sfp_data_cb(struct json_object *p_data, struct list_head *list)
+{
+    int rc = SR_ERR_OK;
+    if (!p_data) {
+        return rc;
+    }
+
+    const char *fmt_rx = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:rx-pwr";
+    rc = insert_sr_node(list, p_data, "rx-pwr", SR_DECIMAL64_T, (char *) fmt_rx);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
+
+    const char *fmt_tx = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:tx-pwr";
+    rc = insert_sr_node(list, p_data, "tx-pwr", SR_DECIMAL64_T, (char *) fmt_tx);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
+
+    const char *fmt_current = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:current";
+    rc = insert_sr_node(list, p_data, "current", SR_DECIMAL64_T, (char *) fmt_current);
+    CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
+
+    const char *fmt_voltage = "/ietf-interfaces:interfaces-state/interface[name='wan']/terastream-interfaces-opto:voltage";
+    rc = insert_sr_node(list, p_data, "voltage", SR_DECIMAL64_T, (char *) fmt_voltage);
     CHECK_RET(rc, cleanup, "failed insert_sr_node: %s", sr_strerror(rc));
 
 cleanup:
