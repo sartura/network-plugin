@@ -27,7 +27,6 @@
 #include "sysrepo.h"
 #include "sysrepo/values.h"
 #include "sysrepo/xpath.h"
-#include "sysrepo/plugins.h"
 
 #include "uci.h"
 
@@ -37,14 +36,14 @@
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
 
 typedef struct priv_s {
-    json_object *i; // ubus call network.interface dump
-    json_object *d; // ubus call network.device status
-    json_object *a; // ubus call router.net arp
-    json_object *n; // ubus call router.net ipv6_neigh
-    json_object *ll; // get link local IPv6 addresses
-    json_object *sfp; // get sfp state data
-    json_object *tmp;
-    bool terastream; // is the terastream YANG model installed
+  json_object *i;   // ubus call network.interface dump
+  json_object *d;   // ubus call network.device status
+  json_object *a;   // ubus call router.net arp
+  json_object *n;   // ubus call router.net ipv6_neigh
+  json_object *ll;  // get link local IPv6 addresses
+  json_object *sfp; // get sfp state data
+  json_object *tmp;
+  bool terastream; // is the terastream YANG model installed
 } priv_t;
 
 #endif /* TERASTREAM_H */
