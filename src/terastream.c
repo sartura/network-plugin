@@ -692,14 +692,14 @@ exit:
 }
 
 static int sync_datastore(sr_ctx_t *ctx) {
-  char datatstore_command[MAX_XPATH] = {0};
+  char datatstore_command[128] = {0};
   int rc = SR_ERR_OK;
   FILE *fp;
 
   /* check if the startup datastore is empty
    * by checking the output of sysrepocfg */
 
-  snprintf(datatstore_command, MAX_XPATH, "sysrepocfg -X -d startup -m %s", YANG_MODEL);
+  snprintf(datatstore_command, 128, "sysrepocfg -X -d startup -m %s", YANG_MODEL);
 
   fp = popen(datatstore_command, "r");
   CHECK_NULL_MSG(fp, &rc, cleanup, "popen failed");
