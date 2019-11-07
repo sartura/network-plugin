@@ -397,7 +397,8 @@ static int parse_network_config(sr_ctx_t *ctx) {
       value = strdup("1500");
     }
     xpath = new_path_keys(fmt, name, interface, "mtu", NULL);
-    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+    rc =
+        sr_set_item_str(ctx->startup_sess, xpath, value, NULL, SR_EDIT_DEFAULT);
     del_path_key(&xpath);
     free(value);
 
@@ -407,14 +408,15 @@ static int parse_network_config(sr_ctx_t *ctx) {
       value = strdup("true");
     parse_uci_bool(value) ? strcpy(value, "true") : strcpy(value, "false");
     xpath = new_path_keys(fmt, name, interface, "enabled", NULL);
-    rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+    rc =
+        sr_set_item_str(ctx->startup_sess, xpath, value, NULL, SR_EDIT_DEFAULT);
     del_path_key(&xpath);
     free(value);
 
     xpath = new_path_key(
         "/ietf-interfaces:interfaces/interface[name='%s']/type", name);
     rc = sr_set_item_str(ctx->startup_sess, xpath,
-                         "iana-if-type:ethernetCsmacd", SR_EDIT_DEFAULT);
+                         "iana-if-type:ethernetCsmacd", NULL, SR_EDIT_DEFAULT);
     CHECK_RET(rc, error, "Couldn't add type for interface %s: %s", xpath,
               sr_strerror(rc));
     del_path_key(&xpath);
@@ -431,7 +433,8 @@ static int parse_network_config(sr_ctx_t *ctx) {
     rc = get_uci_item(ctx->uctx, ucipath, &value);
     if (rc == UCI_OK) {
       xpath = new_path_keys(fmt_ip, name, interface, ipaddr, "netmask");
-      rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+      rc = sr_set_item_str(ctx->startup_sess, xpath, value, NULL,
+                           SR_EDIT_DEFAULT);
       del_path_key(&xpath);
       free(value);
     } else {
@@ -443,7 +446,8 @@ static int parse_network_config(sr_ctx_t *ctx) {
         value = dhcpv6 ? strdup("64") : strdup("24");
 
       xpath = new_path_keys(fmt_ip, name, interface, ipaddr, "prefix-length");
-      rc = sr_set_item_str(ctx->startup_sess, xpath, value, SR_EDIT_DEFAULT);
+      rc = sr_set_item_str(ctx->startup_sess, xpath, value, NULL,
+                           SR_EDIT_DEFAULT);
       del_path_key(&xpath);
       free(value);
     }
