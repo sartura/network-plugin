@@ -18,10 +18,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include <sr_uci.h>
 #include <json-c/json.h>
 #include <libubox/blobmsg.h>
-#include <sr_uci.h>
 #include <sysrepo.h>
 
 #include "openwrt.h"
