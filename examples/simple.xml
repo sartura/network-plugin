@@ -1,0 +1,16 @@
+<interfaces xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces">
+	<interface>
+		<name>eth0</name>
+		<type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
+		<ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+			<mtu>2000</mtu>
+		</ipv4>
+	</interface>
+	<interface>
+		<name>eth1</name>
+		<type xmlns:ianaift="urn:ietf:params:xml:ns:yang:iana-if-type">ianaift:ethernetCsmacd</type>
+		<ipv4 xmlns="urn:ietf:params:xml:ns:yang:ietf-ip">
+			<mtu>2000</mtu>
+		</ipv4>
+	</interface>
+</interfaces>
