@@ -38,7 +38,6 @@ char *transform_data_zero_one_to_boolean_negated_transform(const char *value, vo
 	return xstrdup("true");
 }
 
-
 char *transform_data_null_to_interface_type_transform(const char *value, void *private_data)
 {
 	return xstrdup("iana-if-type:ethernetCsmacd");
