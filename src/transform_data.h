@@ -32,4 +32,15 @@ char *transform_data_zero_one_to_boolean_negated_transform(const char *value, vo
 char *transform_data_null_to_interface_type_transform(const char *value, void *private_data);
 char *transform_data_interface_type_to_null_transform(const char *value, void *private_data);
 
+char *transform_data_ipv4_netmask_to_prefixlen_transform(const char *value, void *private_data);
+char *transform_data_ipv4_prefixlen_to_netmask_transform(const char *value, void *private_data);
+
+/*
+char *transform_data_ipv6_strip_prefixlen_transform(const char *value, void *private_data);
+char *transform_data_ipv6_add_prefixlen_transform(const char *value, void *private_data);
+
+char *transform_data_ipv6_strip_ip_transform(const char *value, void *private_data);
+char *transform_data_ipv6_add_ip_transform(const char *value, void *private_data);
+*/
+
 #endif /*  TRANSFORM_DATA_H_ONCE */
