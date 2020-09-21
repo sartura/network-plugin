@@ -580,7 +580,7 @@ static int transform_path_address_cb(const char *target, const char *from, const
 
 		ipaddr_uci_key_size = (strlen(ipaddr_template) - 2 + 1) + strlen(path_key_value);
 		ipaddr_uci_key = xmalloc(ipaddr_uci_key_size);
-		snprintf(ipaddr_uci_key, ipaddr_uci_key_size, ipaddr_template, path_key_value);
+		snprintf(ipaddr_uci_key, ipaddr_uci_key_size, IPADDR_UCI_TEMPLATE, path_key_value);
 
 		error = srpo_uci_element_value_get(ipaddr_uci_key, NULL, NULL, &uci_value_list, &uci_value_list_size);
 		if (error || uci_value_list_size != 1) {
