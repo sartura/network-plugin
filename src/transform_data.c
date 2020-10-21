@@ -72,7 +72,7 @@ char *transform_data_ipv4_netmask_to_prefixlen_transform(const char *value, void
 		return NULL;
 
 	sprintf(str, "%" PRIu32, n);
-	transform_data_ipv4_prefixlen_to_netmask_transform((const char *) str, NULL);
+	// transform_data_ipv4_prefixlen_to_netmask_transform((const char *) str, NULL);
 
 	return str;
 }
