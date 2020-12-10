@@ -533,8 +533,9 @@ static char *network_ubus_trim_unit(char *string)
 {
 	char *back = string + strlen(string);
 
-	while(!isdigit(*--back));
-	*(back+1) = '\0';
+	while (!isdigit(*--back))
+		;
+	*(back + 1) = '\0';
 
 	return string;
 }
@@ -752,6 +753,8 @@ static void network_ubus_ip6neigh_cb(const char *ubus_json, srpo_ubus_result_val
 		for (size_t k = 0; k < json_object_array_length(ifaces_jobj); k++) {
 			iface_jobj = json_object_array_get_idx(ifaces_jobj, k);
 			json_object_object_get_ex(iface_jobj, "l3_device", &str_jobj);
+			if (str_jobj == NULL)
+				continue;
 
 			/* match assigned l3 device in interfaces list */
 			if (strcmp(json_object_get_string(str_jobj), json_object_get_string(devname_jobj)) != 0)
@@ -770,7 +773,7 @@ static void network_ubus_ip6neigh_cb(const char *ubus_json, srpo_ubus_result_val
 
 			json_object_object_get_ex(neigh_jobj, "macaddr", &str_jobj);
 			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 												strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 			FREE_SAFE(value_str);
 			FREE_SAFE(buffer_str);
@@ -783,9 +786,10 @@ static void network_ubus_ip6neigh_cb(const char *ubus_json, srpo_ubus_result_val
 			json_object_object_get_ex(neigh_jobj, "ip6status", &str_jobj);
 			if (!!str_jobj) {
 				value_str = xstrdup(json_object_get_string(str_jobj));
-				for (lower_str = value_str; *lower_str; lower_str++) *lower_str = (char )tolower(*lower_str);
+				for (lower_str = value_str; *lower_str; lower_str++)
+					*lower_str = (char) tolower(*lower_str);
 
-				error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+				error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 													strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 				FREE_SAFE(value_str);
 				FREE_SAFE(buffer_str);
@@ -798,14 +802,15 @@ static void network_ubus_ip6neigh_cb(const char *ubus_json, srpo_ubus_result_val
 			snprintf(buffer_str, buffer_str_size, IP6NEIGH_XPATH_STATE_TEMPLATE "/is-router", ifname_str, "%s");
 
 			value_str = json_object_get_boolean(str_jobj) ? xstrdup("") : xstrdup("");
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 												strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 			FREE_SAFE(value_str);
 			FREE_SAFE(buffer_str);
 		}
 	}
 
-	if (error) return;
+	if (error)
+		return;
 
 	return;
 }
@@ -841,6 +846,8 @@ static void network_ubus_ipneigh_cb(const char *ubus_json, srpo_ubus_result_valu
 		for (size_t k = 0; k < json_object_array_length(ifaces_jobj); k++) {
 			iface_jobj = json_object_array_get_idx(ifaces_jobj, k);
 			json_object_object_get_ex(iface_jobj, "l3_device", &str_jobj);
+			if (str_jobj == NULL)
+				continue;
 
 			if (strcmp(json_object_get_string(str_jobj), json_object_get_string(devname_jobj)) != 0)
 				continue;
@@ -858,14 +865,15 @@ static void network_ubus_ipneigh_cb(const char *ubus_json, srpo_ubus_result_valu
 
 			json_object_object_get_ex(neigh_jobj, "macaddr", &str_jobj);
 			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 												strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 			FREE_SAFE(value_str);
 			FREE_SAFE(buffer_str);
 		}
 	}
 
-	if (error) return;
+	if (error)
+		return;
 
 	return;
 }
@@ -912,7 +920,8 @@ static void network_ubus_sfp_cb(const char *ubus_json, srpo_ubus_result_values_t
 										strlen(INTERFACE_XPATH_STATE_TEMPLATE "/terastream-interfaces-opto:voltage"), ifname_str, strlen(ifname_str));
 	FREE_SAFE(value_str);
 
-	if (error) return;
+	if (error)
+		return;
 
 	return;
 }
@@ -920,7 +929,7 @@ static void network_ubus_sfp_cb(const char *ubus_json, srpo_ubus_result_values_t
 static void network_ubus_interfaces_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
 	json_object *result = NULL;
-	json_object *ifaces_jobj= NULL;
+	json_object *ifaces_jobj = NULL;
 	json_object *iface_jobj = NULL;
 	json_object *l3_device_jobj = NULL;
 	json_object *l3_stats_jobj = NULL;
@@ -956,86 +965,94 @@ static void network_ubus_interfaces_cb(const char *ubus_json, srpo_ubus_result_v
 
 		/* get l3 device information */
 		json_object_object_get_ex(iface_jobj, "l3_device", &str_jobj);
+		if (str_jobj == NULL)
+			goto ipv4;
+
 		json_object_object_get_ex(ubus_jobj_ctx.device, json_object_get_string(str_jobj), &l3_device_jobj);
-		if (!!l3_device_jobj) {
-			/* mac */
-			json_object_object_get_ex(l3_device_jobj, "macaddr", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/phys-address",
-												strlen(INTERFACE_XPATH_STATE_TEMPLATE "/phys-address"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
+		if (l3_device_jobj == NULL)
+			goto ipv4;
 
-			/* mtu */
-			json_object_object_get_ex(l3_device_jobj, "mtu", &str_jobj);
-			if (!!str_jobj) {
-				// NOTE: YANG model does not accept (2^16 - 1)
-				if (strcmp(json_object_get_string(str_jobj), "65536") == 0)
-					value_str = xstrdup("65535");
-				else
-					value_str = xstrdup(json_object_get_string(str_jobj));
+		/* mac */
+		json_object_object_get_ex(l3_device_jobj, "macaddr", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/phys-address",
+											strlen(INTERFACE_XPATH_STATE_TEMPLATE "/phys-address"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
 
-				error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv4/mtu",
-													strlen(INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv4/mtu"), ifname_str, strlen(ifname_str));
-				FREE_SAFE(value_str);
-			}
-
-			/* mtu6 */
-			json_object_object_get_ex(l3_device_jobj, "mtu6", &str_jobj);
-			if (!!str_jobj) {
+		/* mtu */
+		json_object_object_get_ex(l3_device_jobj, "mtu", &str_jobj);
+		if (!!str_jobj) {
+			// NOTE: YANG model does not accept (2^16 - 1)
+			if (strcmp(json_object_get_string(str_jobj), "65536") == 0)
+				value_str = xstrdup("65535");
+			else
 				value_str = xstrdup(json_object_get_string(str_jobj));
-				error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv6/mtu",
-													strlen(INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv6/mtu"), ifname_str, strlen(ifname_str));
-				FREE_SAFE(value_str);
-			}
 
-			/* statistics */
-			json_object_object_get_ex(l3_device_jobj, "statistics", &l3_stats_jobj);
-
-			json_object_object_get_ex(l3_stats_jobj, "rx_bytes", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-octets",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-octets"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "rx_dropped", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-discards",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-discards"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "rx_errors", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-errors",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-errors"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "multicast", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-multicast-pkts",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-multicast-pkts"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "tx_bytes", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-octets",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-octets"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "tx_dropped", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-discards",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-discards"), ifname_str, strlen(ifname_str));
-			FREE_SAFE(value_str);
-
-			json_object_object_get_ex(l3_stats_jobj, "tx_errors", &str_jobj);
-			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-errors",
-												strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-errors"), ifname_str, strlen(ifname_str));
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv4/mtu",
+												strlen(INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv4/mtu"), ifname_str, strlen(ifname_str));
 			FREE_SAFE(value_str);
 		}
 
+		/* mtu6 */
+		json_object_object_get_ex(l3_device_jobj, "mtu6", &str_jobj);
+		if (!!str_jobj) {
+			value_str = xstrdup(json_object_get_string(str_jobj));
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv6/mtu",
+												strlen(INTERFACE_XPATH_STATE_TEMPLATE "/ietf-ip:ipv6/mtu"), ifname_str, strlen(ifname_str));
+			FREE_SAFE(value_str);
+		}
+
+		/* statistics */
+		json_object_object_get_ex(l3_device_jobj, "statistics", &l3_stats_jobj);
+
+		json_object_object_get_ex(l3_stats_jobj, "rx_bytes", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-octets",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-octets"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "rx_dropped", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-discards",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-discards"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "rx_errors", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-errors",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-errors"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "multicast", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/out-multicast-pkts",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/out-multicast-pkts"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "tx_bytes", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-octets",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-octets"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "tx_dropped", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-discards",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-discards"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+		json_object_object_get_ex(l3_stats_jobj, "tx_errors", &str_jobj);
+		value_str = xstrdup(json_object_get_string(str_jobj));
+		error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), STATISTICS_XPATH_STATE_TEMPLATE "/in-errors",
+											strlen(STATISTICS_XPATH_STATE_TEMPLATE "/in-errors"), ifname_str, strlen(ifname_str));
+		FREE_SAFE(value_str);
+
+	ipv4:
 		/* ipv4 */
 		json_object_object_get_ex(iface_jobj, "ipv4-address", &ips_jobj);
+		if (ips_jobj == NULL)
+			goto ipv6;
+
 		for (size_t k = 0; k < json_object_array_length(ips_jobj); k++) {
 			ip_jobj = json_object_array_get_idx(ips_jobj, k);
 
@@ -1048,13 +1065,17 @@ static void network_ubus_interfaces_cb(const char *ubus_json, srpo_ubus_result_v
 
 			json_object_object_get_ex(ip_jobj, "mask", &str_jobj);
 			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 												strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 			FREE_SAFE(value_str);
 			FREE_SAFE(buffer_str);
 		}
 
+	ipv6:
 		json_object_object_get_ex(iface_jobj, "ipv6-address", &ips_jobj);
+		if (ips_jobj == NULL)
+			goto end;
+
 		for (size_t k = 0; k < json_object_array_length(ips_jobj); k++) {
 			ip_jobj = json_object_array_get_idx(ips_jobj, k);
 
@@ -1067,14 +1088,18 @@ static void network_ubus_interfaces_cb(const char *ubus_json, srpo_ubus_result_v
 
 			json_object_object_get_ex(ip_jobj, "mask", &str_jobj);
 			value_str = xstrdup(json_object_get_string(str_jobj));
-			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char*) buffer_str,
+			error = srpo_ubus_result_values_add(values, value_str, strlen(value_str), (const char *) buffer_str,
 												strlen(buffer_str), ipaddr_str, strlen(ipaddr_str));
 			FREE_SAFE(value_str);
 			FREE_SAFE(buffer_str);
 		}
+
+	end:
+		continue;
 	}
 
-	if (error) return;
+	if (error)
+		return;
 
 	return;
 }
@@ -1094,8 +1119,9 @@ static void network_ubus_devices_cb(const char *ubus_json, srpo_ubus_result_valu
 	result = json_tokener_parse(ubus_json);
 	ubus_jobj_ctx.device = result;
 
-	json_object_object_foreach(result, key, value) {
-		(void)(key);
+	json_object_object_foreach(result, key, value)
+	{
+		(void) (key);
 
 		json_object_object_get_ex(value, "bridge-members", &brmems_jobj);
 		if (!brmems_jobj)
@@ -1170,7 +1196,8 @@ static void network_ubus_devices_cb(const char *ubus_json, srpo_ubus_result_valu
 		}
 	}
 
-	if (error) return;
+	if (error)
+		return;
 
 	return;
 }
